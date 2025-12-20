@@ -474,11 +474,29 @@ def tensor_to_pil(image_tensor: np.ndarray) -> Image.Image:
     Returns:
         PIL Image in RGB mode
     """
+    # Accept torch tensors or numpy arrays without hard dependency on torch.
+    if hasattr(image_tensor, "detach"):
+        image_tensor = image_tensor.detach()
+        if hasattr(image_tensor, "cpu"):
+            image_tensor = image_tensor.cpu()
+        image_tensor = image_tensor.numpy()
+    elif not isinstance(image_tensor, np.ndarray):
+        image_tensor = np.array(image_tensor)
+
     # Convert from [0, 1] to [0, 255]
-    img_array = (image_tensor * 255).astype(np.uint8)
+    img_array = np.clip(image_tensor * 255, 0, 255).astype(np.uint8)
 
     # Create PIL Image
-    pil_image = Image.fromarray(img_array, mode='RGB')
+    if img_array.ndim == 2:
+        mode = "L"
+    elif img_array.shape[-1] == 1:
+        img_array = img_array[:, :, 0]
+        mode = "L"
+    elif img_array.shape[-1] == 4:
+        mode = "RGBA"
+    else:
+        mode = "RGB"
+    pil_image = Image.fromarray(img_array, mode=mode)
 
     return pil_image
 
