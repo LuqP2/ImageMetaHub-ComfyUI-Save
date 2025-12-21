@@ -3,8 +3,11 @@ MetaHub Save Image Node for ComfyUI
 Advanced image saving with dual metadata support (A1111/Civitai + Image MetaHub)
 """
 
-from typing import Dict, Any
+from pathlib import Path
 from . import metadata_utils as utils
+from .workflow_extractor import WorkflowExtractor
+
+_HINT_SHOWN = False
 
 
 class MetaHubSaveNode:
@@ -14,7 +17,7 @@ class MetaHubSaveNode:
     Features:
     - A1111/Civitai compatible metadata (tEXt chunk "parameters")
     - Image MetaHub metadata (iTXt chunk "imagemetahub_data")
-    - Auto-detection of LoRAs from workflow
+    - Auto-detection of workflow parameters (sampler, prompts, model, VAE, LoRAs)
     - SHA256 model hashes (AutoV2/Civitai format)
     - Graceful degradation (never interrupts generation)
     """
@@ -24,68 +27,77 @@ class MetaHubSaveNode:
         return {
             "required": {
                 "images": ("IMAGE",),
+            },
+            "optional": {
+                "filename_pattern": ("STRING", {
+                    "default": "ComfyUI_%counter%",
+                    "tooltip": "Filename pattern with placeholders"
+                }),
+                "file_format": (["PNG", "JPEG", "WebP"], {
+                    "default": "PNG",
+                    "tooltip": "File format"
+                }),
+                "quality": ("INT", {
+                    "default": 95,
+                    "min": 1,
+                    "max": 100,
+                    "tooltip": "JPEG/WebP quality"
+                }),
+                "output_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Custom output directory (empty = ComfyUI default)"
+                }),
+                "seed": ("INT", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override seed"
+                }),
+                "steps": ("INT", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override steps"
+                }),
+                "cfg": ("FLOAT", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override CFG scale"
+                }),
+                "sampler_name": ("STRING", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override sampler name"
+                }),
+                "scheduler": ("STRING", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override scheduler"
+                }),
+                "model_name": ("STRING", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override model filename"
+                }),
                 "positive": ("STRING", {
                     "multiline": True,
-                    "default": "",
-                    "tooltip": "Positive prompt"
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override positive prompt"
                 }),
                 "negative": ("STRING", {
                     "multiline": True,
-                    "default": "",
-                    "tooltip": "Negative prompt"
-                }),
-                "seed": ("INT", {
-                    "default": 0,
-                    "min": 0,
-                    "max": 0xffffffffffffffff,
-                    "tooltip": "Generation seed"
-                }),
-                "steps": ("INT", {
-                    "default": 20,
-                    "min": 1,
-                    "max": 10000,
-                    "tooltip": "Sampling steps"
-                }),
-                "cfg": ("FLOAT", {
-                    "default": 7.0,
-                    "min": 0.0,
-                    "max": 100.0,
-                    "step": 0.1,
-                    "tooltip": "CFG scale"
-                }),
-                "sampler_name": ("STRING", {
-                    "default": "euler",
-                    "tooltip": "Sampler name"
-                }),
-                "scheduler": ("STRING", {
-                    "default": "normal",
-                    "tooltip": "Scheduler"
-                }),
-                "model_name": ("STRING", {
-                    "default": "",
-                    "tooltip": "Model filename (e.g., model.safetensors)"
-                }),
-            },
-            "optional": {
-                "vae_name": ("STRING", {
-                    "default": "",
-                    "tooltip": "VAE filename"
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override negative prompt"
                 }),
                 "denoise": ("FLOAT", {
-                    "default": 1.0,
-                    "min": 0.0,
-                    "max": 1.0,
-                    "step": 0.01,
-                    "tooltip": "Denoise strength"
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override denoise strength"
                 }),
-                "upscale_model": ("STRING", {
-                    "default": "",
-                    "tooltip": "Upscale model name"
-                }),
-                "generation_time": ("FLOAT", {
-                    "default": 0.0,
-                    "min": 0.0,
-                    "tooltip": "Generation time in seconds"
+                "vae_name": ("STRING", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override VAE filename"
                 }),
                 "user_tags": ("STRING", {
                     "default": "",
@@ -100,18 +112,24 @@ class MetaHubSaveNode:
                     "default": "",
                     "tooltip": "IMH Pro: Project name"
                 }),
+                "generation_time": ("FLOAT", {
+                    "default": 0.0,
+                    "min": 0.0,
+                    "tooltip": "Generation time in seconds"
+                }),
                 "filename_prefix": ("STRING", {
                     "default": "ComfyUI",
-                    "tooltip": "Filename prefix"
+                    "tooltip": "Deprecated: use filename_pattern"
                 }),
-                "output_path": ("STRING", {
+                "upscale_model": ("STRING", {
                     "default": "",
-                    "tooltip": "Custom output directory (empty = ComfyUI default)"
+                    "tooltip": "Upscale model name"
                 }),
             },
             "hidden": {
                 "prompt": "PROMPT",
-                "extra_pnginfo": "EXTRA_PNGINFO"
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID"
             },
         }
 
@@ -121,29 +139,206 @@ class MetaHubSaveNode:
     CATEGORY = "image/save"
     DESCRIPTION = "Save images with A1111/Civitai and Image MetaHub metadata"
 
-    def save_images(self, images, positive, negative, seed, steps, cfg, sampler_name, scheduler, model_name, vae_name="", denoise=1.0, upscale_model="", generation_time=0.0, user_tags="", notes="", project_name="", filename_prefix="ComfyUI", output_path="", prompt=None, extra_pnginfo=None):
-        print(f"[MetaHub] Starting save_images for batch of {len(images)} image(s)")
-        workflow_json = utils.get_workflow_json(extra_pnginfo)
-        lora_list = utils.extract_loras_from_workflow(workflow_json)
-        print(f"[MetaHub] Detected {len(lora_list)} LoRA(s) from workflow")
-        print(f"[MetaHub] Calculating hash for model: {model_name}")
-        model_hash = utils.calculate_model_hash(model_name, model_type="checkpoint")
-        print(f"[MetaHub] Calculating hashes for LoRAs...")
-        lora_hashes = utils.calculate_lora_hashes(lora_list)
-        height, width = images[0].shape[0], images[0].shape[1]
-        print(f"[MetaHub] Image dimensions: {width}x{height}")
-        output_dir = utils.get_output_directory(output_path)
-        print(f"[MetaHub] Saving to: {output_dir}")
-        saved_paths = utils.save_image_batch(images, output_dir, filename_prefix)
-        print(f"[MetaHub] Saved {len(saved_paths)} image(s)")
-        for idx, file_path in enumerate(saved_paths):
-            print(f"[MetaHub] Injecting metadata into: {file_path.name}")
-            params = {'positive': positive, 'negative': negative, 'steps': steps, 'sampler': sampler_name, 'scheduler': scheduler, 'cfg': cfg, 'seed': seed, 'width': width, 'height': height, 'model_name': model_name, 'model_hash': model_hash, 'vae_name': vae_name, 'denoise': denoise, 'upscale_model': upscale_model, 'generation_time': generation_time, 'user_tags': user_tags, 'notes': notes, 'project_name': project_name, 'lora_list': lora_list, 'lora_hashes': lora_hashes}
+    def save_images(
+        self,
+        images,
+        filename_pattern="ComfyUI_%counter%",
+        file_format="PNG",
+        quality=95,
+        output_path="",
+        seed=None,
+        steps=None,
+        cfg=None,
+        sampler_name=None,
+        scheduler=None,
+        model_name=None,
+        positive=None,
+        negative=None,
+        denoise=None,
+        vae_name=None,
+        user_tags="",
+        notes="",
+        project_name="",
+        generation_time=0.0,
+        filename_prefix="ComfyUI",
+        upscale_model="",
+        prompt=None,
+        extra_pnginfo=None,
+        unique_id=None,
+    ):
+        global _HINT_SHOWN
+
+        try:
+            workflow_json = utils.get_workflow_json(extra_pnginfo)
+            prompt_data = prompt if isinstance(prompt, dict) else workflow_json.get("prompt", {})
+            if not isinstance(prompt_data, dict):
+                prompt_data = {}
+
+            extractor = WorkflowExtractor(prompt_data)
+            extracted, missing_fields = extractor.extract(
+                save_node_id=str(unique_id) if unique_id is not None else None
+            )
+            lora_list = extracted.get("lora_list") or utils.extract_loras_from_workflow(workflow_json)
+
+            def resolve_value(manual_value, extracted_value, default_value):
+                if manual_value is not None:
+                    return manual_value
+                if extracted_value is not None:
+                    return extracted_value
+                return default_value
+
+            def normalize_int(value, default_value):
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return default_value
+
+            def normalize_float(value, default_value):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return default_value
+
+            seed_value = normalize_int(resolve_value(seed, extracted.get("seed"), 0), 0)
+            steps_value = normalize_int(resolve_value(steps, extracted.get("steps"), 20), 20)
+            cfg_value = normalize_float(resolve_value(cfg, extracted.get("cfg"), 7.0), 7.0)
+            sampler_value = resolve_value(sampler_name, extracted.get("sampler_name"), "euler")
+            scheduler_value = resolve_value(scheduler, extracted.get("scheduler"), "normal")
+            model_name_value = resolve_value(model_name, extracted.get("model_name"), "")
+            positive_value = resolve_value(positive, extracted.get("positive"), "")
+            negative_value = resolve_value(negative, extracted.get("negative"), "")
+            denoise_value = normalize_float(resolve_value(denoise, extracted.get("denoise"), 1.0), 1.0)
+            vae_name_value = resolve_value(vae_name, extracted.get("vae_name"), "")
+
+            quality_value = normalize_int(quality if quality is not None else 95, 95)
+            quality_value = max(1, min(100, quality_value))
+
+            default_pattern = "ComfyUI_%counter%"
+            pattern_value = (filename_pattern or "").strip()
+            if pattern_value and pattern_value != default_pattern:
+                final_pattern = pattern_value
+            elif filename_prefix and str(filename_prefix).strip():
+                final_pattern = f"{filename_prefix}_%counter%"
+            else:
+                final_pattern = default_pattern
+
+            if model_name_value:
+                model_hash = utils.calculate_model_hash(model_name_value, model_type="checkpoint")
+            else:
+                model_hash = "0000000000"
+            lora_hashes = utils.calculate_lora_hashes(lora_list) if lora_list else {}
+
+            height, width = images[0].shape[0], images[0].shape[1]
+
+            params = {
+                "positive": positive_value,
+                "negative": negative_value,
+                "steps": steps_value,
+                "sampler": sampler_value,
+                "scheduler": scheduler_value,
+                "cfg": cfg_value,
+                "seed": seed_value,
+                "width": width,
+                "height": height,
+                "model_name": model_name_value,
+                "model_hash": model_hash,
+                "vae_name": vae_name_value,
+                "denoise": denoise_value,
+                "upscale_model": upscale_model,
+                "generation_time": generation_time,
+                "user_tags": user_tags,
+                "notes": notes,
+                "project_name": project_name,
+                "lora_list": lora_list,
+                "lora_hashes": lora_hashes,
+            }
+
             a1111_metadata = utils.build_a1111_metadata(params)
             imh_metadata = utils.build_imh_metadata(params, workflow_json)
-            utils.inject_metadata_chunks(str(file_path), a1111_metadata, imh_metadata)
-        print(f"[MetaHub] ✓ All images saved successfully with metadata")
-        return {}
+
+            output_dir = utils.get_output_directory(output_path)
+            saved_paths = utils.save_image_batch(
+                images,
+                output_dir,
+                final_pattern,
+                params,
+                file_format,
+                quality_value,
+                a1111_metadata,
+                imh_metadata,
+            )
+
+            warn_fields = {
+                "seed",
+                "steps",
+                "cfg",
+                "sampler_name",
+                "scheduler",
+                "model_name",
+                "positive",
+                "negative",
+                "loras",
+            }
+            label_map = {
+                "sampler_name": "sampler",
+                "model_name": "model",
+            }
+            manual_inputs = {
+                "seed": seed,
+                "steps": steps,
+                "cfg": cfg,
+                "sampler_name": sampler_name,
+                "scheduler": scheduler,
+                "model_name": model_name,
+                "positive": positive,
+                "negative": negative,
+            }
+            missing_warn = []
+            for field in missing_fields:
+                if field not in warn_fields:
+                    continue
+                if field == "loras":
+                    if lora_list:
+                        continue
+                    missing_warn.append("loras")
+                    continue
+                if manual_inputs.get(field) is not None:
+                    continue
+                missing_warn.append(label_map.get(field, field))
+            if missing_warn:
+                missing_warn = sorted(set(missing_warn))
+                print(
+                    "[ImageMetaHub-Save] ⚠ Some params not detected "
+                    f"({', '.join(missing_warn)}), image saved with available metadata"
+                )
+
+            auto_summary_parts = []
+            if seed is None and extracted.get("seed") is not None:
+                auto_summary_parts.append(f"seed={seed_value}")
+            if steps is None and extracted.get("steps") is not None:
+                auto_summary_parts.append(f"steps={steps_value}")
+            if model_name is None and extracted.get("model_name"):
+                model_display = Path(str(model_name_value)).stem or str(model_name_value)
+                auto_summary_parts.append(f"model={model_display}")
+            auto_summary = ", ".join(auto_summary_parts)
+
+            for file_path in saved_paths:
+                suffix = ""
+                if not _HINT_SHOWN and auto_summary:
+                    suffix = f" (auto-detected: {auto_summary})"
+                print(f"[ImageMetaHub-Save] ✓ Saved: {file_path.name}{suffix}")
+                if not _HINT_SHOWN:
+                    print("💡 Organize your AI images → github.com/LuqP2/ImageMetaHub")
+                    _HINT_SHOWN = True
+
+            # Build preview structure for ComfyUI UI
+            output_base = utils.get_output_directory("")  # Get default ComfyUI output
+            return utils.build_ui_preview(saved_paths, output_base)
+
+        except Exception as e:
+            print(f"[ImageMetaHub-Save] Warning: Save failed: {e}")
+            # Return empty UI structure on error
+            return {"ui": {"images": []}}
 
 
 NODE_CLASS_MAPPINGS = {"MetaHubSaveNode": MetaHubSaveNode}

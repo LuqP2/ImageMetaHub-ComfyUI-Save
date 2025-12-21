@@ -1,15 +1,23 @@
 """
 Metadata Utils for MetaHub Save Node
-Handles hash calculation, metadata formatting, and PNG chunk injection.
+Handles hash calculation, metadata formatting, and metadata injection.
 """
 
 import hashlib
 import json
 import os
+                                                            from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
 from PIL import Image, PngImagePlugin
+
+try:
+    import piexif
+    from piexif import helper as piexif_helper
+except Exception:
+    piexif = None
+    piexif_helper = None
 
 
 # ============================================================================
@@ -327,7 +335,9 @@ def extract_loras_from_workflow(workflow_json: dict) -> List[dict]:
                 inputs = node_data.get('inputs', {})
                 lora_name = inputs.get('lora_name', '')
                 if lora_name:
-                    weight = inputs.get('strength_model', inputs.get('strength', 1.0))
+                    weight = inputs.get('strength_model')
+                    if weight is None:
+                        weight = inputs.get('strength', inputs.get('strength_clip', 1.0))
                     loras.append({
                         "name": lora_name,
                         "weight": float(weight)
@@ -382,30 +392,170 @@ def inject_metadata_chunks(image_path: str, a1111_metadata: str, imh_metadata: d
         imh_metadata: IMH metadata dict (will be JSON serialized)
     """
     try:
-        # Load existing image
         img = Image.open(image_path)
-
-        # Create PngInfo object
-        png_info = PngImagePlugin.PngInfo()
-
-        # Add tEXt chunk for A1111 compatibility
-        png_info.add_text("parameters", a1111_metadata)
-
-        # Add iTXt chunk for IMH data (supports UTF-8)
-        imh_json = json.dumps(imh_metadata, ensure_ascii=False)
-        png_info.add_itxt("imagemetahub_data", imh_json)
-
-        # Save with metadata (Pillow optimizes to avoid full re-encode)
-        img.save(image_path, "PNG", pnginfo=png_info, compress_level=4)
+        save_png_with_metadata(img, image_path, a1111_metadata, imh_metadata)
 
     except Exception as e:
         # Log error but don't raise - image is already saved
         print(f"[MetaHub] Warning: Could not inject metadata into {image_path}: {e}")
 
 
+def save_png_with_metadata(image: Image.Image, image_path: str, a1111_metadata: str, imh_metadata: dict) -> None:
+    """
+    Saves PNG image with A1111 tEXt and IMH iTXt metadata.
+    """
+    try:
+        png_info = PngImagePlugin.PngInfo()
+        png_info.add_text("parameters", a1111_metadata or "")
+        imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
+        png_info.add_itxt("imagemetahub_data", imh_json)
+        image.save(image_path, "PNG", pnginfo=png_info, compress_level=4)
+    except Exception as e:
+        print(f"[MetaHub] Warning: PNG metadata save failed for {image_path}: {e}")
+        image.save(image_path, "PNG", compress_level=4)
+
+
+def _build_exif_bytes(a1111_metadata: str, imh_metadata: dict) -> Optional[bytes]:
+    if piexif is None or piexif_helper is None:
+        return None
+    try:
+        exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+        imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
+        if imh_json:
+            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = imh_json.encode("utf-8", errors="replace")
+        if a1111_metadata:
+            exif_dict["Exif"][piexif.ExifIFD.UserComment] = piexif_helper.UserComment.dump(
+                a1111_metadata, encoding="unicode"
+            )
+        return piexif.dump(exif_dict)
+    except Exception:
+        return None
+
+
+def save_jpeg_with_metadata(
+    image: Image.Image,
+    image_path: str,
+    quality: int,
+    a1111_metadata: str,
+    imh_metadata: dict,
+) -> None:
+    """
+    Saves JPEG image with EXIF metadata (UserComment + ImageDescription).
+    """
+    try:
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGB")
+        save_kwargs: Dict[str, Any] = {"format": "JPEG", "quality": quality}
+        exif_bytes = _build_exif_bytes(a1111_metadata, imh_metadata)
+        if exif_bytes:
+            save_kwargs["exif"] = exif_bytes
+        elif a1111_metadata:
+            save_kwargs["comment"] = a1111_metadata.encode("utf-8", errors="replace")
+        image.save(image_path, **save_kwargs)
+    except Exception as e:
+        print(f"[MetaHub] Warning: JPEG metadata save failed for {image_path}: {e}")
+        image.save(image_path, "JPEG", quality=quality)
+
+
+def save_webp_with_metadata(
+    image: Image.Image,
+    image_path: str,
+    quality: int,
+    a1111_metadata: str,
+    imh_metadata: dict,
+) -> None:
+    """
+    Saves WebP image with EXIF metadata.
+    """
+    try:
+        save_kwargs: Dict[str, Any] = {"format": "WEBP", "quality": quality}
+        exif_bytes = _build_exif_bytes(a1111_metadata, imh_metadata)
+        if exif_bytes:
+            save_kwargs["exif"] = exif_bytes
+        elif a1111_metadata:
+            save_kwargs["comment"] = a1111_metadata
+        image.save(image_path, **save_kwargs)
+    except Exception as e:
+        print(f"[MetaHub] Warning: WebP metadata save failed for {image_path}: {e}")
+        image.save(image_path, "WEBP", quality=quality)
+
+
 # ============================================================================
 # FILE MANAGEMENT
 # ============================================================================
+
+_INVALID_FILENAME_CHARS = '<>:"/\\|?*'
+_KNOWN_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _normalize_file_format(file_format: str) -> str:
+    fmt = (file_format or "PNG").strip().upper()
+    if fmt == "JPG":
+        fmt = "JPEG"
+    if fmt not in ("PNG", "JPEG", "WEBP"):
+        fmt = "PNG"
+    return fmt
+
+
+def _get_extension(file_format: str) -> str:
+    fmt = _normalize_file_format(file_format)
+    if fmt == "JPEG":
+        return ".jpg"
+    if fmt == "WEBP":
+        return ".webp"
+    return ".png"
+
+
+def _strip_known_extension(name: str) -> str:
+    lower = name.lower()
+    for ext in _KNOWN_EXTENSIONS:
+        if lower.endswith(ext):
+            return name[: -len(ext)]
+    return name
+
+
+def sanitize_filename(name: str) -> str:
+    if not name:
+        return "unknown"
+    cleaned = str(name)
+    for ch in _INVALID_FILENAME_CHARS:
+        cleaned = cleaned.replace(ch, "_")
+    cleaned = cleaned.strip().strip(".")
+    return cleaned or "unknown"
+
+
+def _format_placeholder_value(value: Any) -> str:
+    if value is None:
+        return "unknown"
+    if isinstance(value, str) and not value.strip():
+        return "unknown"
+    return str(value)
+
+
+def resolve_placeholders(pattern: str, params: dict, counter: int) -> str:
+    now = datetime.now()
+    model_name = params.get("model_name") or ""
+    model_base = Path(model_name).stem if model_name else ""
+
+    replacements = {
+        "%counter%": f"{counter:05d}",
+        "%seed%": _format_placeholder_value(params.get("seed")),
+        "%date%": now.strftime("%Y-%m-%d"),
+        "%time%": now.strftime("%H-%M-%S"),
+        "%datetime%": now.strftime("%Y-%m-%d_%H-%M-%S"),
+        "%model%": _format_placeholder_value(model_base),
+        "%sampler%": _format_placeholder_value(params.get("sampler")),
+        "%steps%": _format_placeholder_value(params.get("steps")),
+        "%cfg%": _format_placeholder_value(params.get("cfg")),
+        "%width%": _format_placeholder_value(params.get("width")),
+        "%height%": _format_placeholder_value(params.get("height")),
+    }
+
+    resolved = pattern or "ComfyUI_%counter%"
+    for placeholder, value in replacements.items():
+        resolved = resolved.replace(placeholder, value)
+    return resolved
+
 
 def get_output_directory(output_path: str) -> Path:
     """
@@ -439,23 +589,30 @@ def get_output_directory(output_path: str) -> Path:
     return output_dir
 
 
-def get_next_filename(output_dir: Path, prefix: str) -> Path:
+def get_next_filename(output_dir: Path, filename_pattern: str, params: dict, file_format: str) -> Path:
     """
     Generates next available filename with auto-increment counter.
 
-    Format: {prefix}_{counter:05d}.png
+    Format: resolved pattern + extension
     Example: ComfyUI_00001.png, ComfyUI_00002.png
 
     Args:
         output_dir: Directory to save file
-        prefix: Filename prefix
+        filename_pattern: Filename pattern with placeholders
+        params: Dict with placeholder values
+        file_format: PNG, JPEG, or WEBP
 
     Returns:
         Full path to next available filename
     """
     counter = 1
+    uses_counter = "%counter%" in (filename_pattern or "")
+    extension = _get_extension(file_format)
     while True:
-        filename = f"{prefix}_{counter:05d}.png"
+        resolved = resolve_placeholders(filename_pattern, params, counter)
+        if not uses_counter and counter > 1:
+            resolved = f"{resolved}_{counter:05d}"
+        filename = sanitize_filename(_strip_known_extension(resolved)) + extension
         full_path = output_dir / filename
         if not full_path.exists():
             return full_path
@@ -501,14 +658,47 @@ def tensor_to_pil(image_tensor: np.ndarray) -> Image.Image:
     return pil_image
 
 
-def save_image_batch(images: np.ndarray, output_dir: Path, prefix: str) -> List[Path]:
+def save_image_with_metadata(
+    image: Image.Image,
+    file_path: Path,
+    file_format: str,
+    quality: int,
+    a1111_metadata: str,
+    imh_metadata: dict,
+) -> None:
+    fmt = _normalize_file_format(file_format)
+    if fmt == "PNG":
+        save_png_with_metadata(image, str(file_path), a1111_metadata, imh_metadata)
+    elif fmt == "JPEG":
+        save_jpeg_with_metadata(image, str(file_path), quality, a1111_metadata, imh_metadata)
+    elif fmt == "WEBP":
+        save_webp_with_metadata(image, str(file_path), quality, a1111_metadata, imh_metadata)
+    else:
+        save_png_with_metadata(image, str(file_path), a1111_metadata, imh_metadata)
+
+
+def save_image_batch(
+    images: np.ndarray,
+    output_dir: Path,
+    filename_pattern: str,
+    params: dict,
+    file_format: str = "PNG",
+    quality: int = 95,
+    a1111_metadata: str = "",
+    imh_metadata: Optional[dict] = None,
+) -> List[Path]:
     """
-    Saves batch of images with auto-increment filenames.
+    Saves batch of images with auto-increment filenames and metadata.
 
     Args:
         images: Batch of images from ComfyUI (shape: [B, H, W, C])
         output_dir: Output directory
-        prefix: Filename prefix
+        filename_pattern: Filename pattern with placeholders
+        params: Dict with placeholder values
+        file_format: PNG, JPEG, or WEBP
+        quality: JPEG/WebP quality (1-100)
+        a1111_metadata: A1111 metadata string
+        imh_metadata: IMH metadata dict
 
     Returns:
         List of saved file paths
@@ -520,11 +710,82 @@ def save_image_batch(images: np.ndarray, output_dir: Path, prefix: str) -> List[
         pil_image = tensor_to_pil(image_tensor)
 
         # Get next filename
-        file_path = get_next_filename(output_dir, prefix)
+        file_path = get_next_filename(output_dir, filename_pattern, params, file_format)
 
-        # Save image (metadata will be added later)
-        pil_image.save(file_path, "PNG", compress_level=4)
-
-        saved_paths.append(file_path)
+        # Save image with metadata
+        try:
+            save_image_with_metadata(pil_image, file_path, file_format, quality, a1111_metadata, imh_metadata or {})
+            saved_paths.append(file_path)
+        except Exception as e:
+            print(f"[MetaHub] Warning: Could not save image {file_path}: {e}")
+            try:
+                fmt = _normalize_file_format(file_format)
+                if fmt == "JPEG":
+                    if pil_image.mode in ("RGBA", "LA", "P"):
+                        pil_image = pil_image.convert("RGB")
+                    pil_image.save(file_path, "JPEG", quality=quality)
+                elif fmt == "WEBP":
+                    pil_image.save(file_path, "WEBP", quality=quality)
+                else:
+                    pil_image.save(file_path, "PNG", compress_level=4)
+                saved_paths.append(file_path)
+            except Exception as save_error:
+                print(f"[MetaHub] Warning: Fallback save failed for {file_path}: {save_error}")
 
     return saved_paths
+
+
+def build_ui_preview(saved_paths: List[Path], output_base: Path) -> dict:
+    """
+    Builds UI preview structure for ComfyUI frontend.
+
+    ComfyUI frontend expects relative paths from output directory with format:
+    {
+        "ui": {
+            "images": [
+                {"filename": "file.png", "subfolder": "subdir", "type": "output"}
+            ]
+        }
+    }
+
+    Args:
+        saved_paths: List of saved file paths
+        output_base: Base output directory (ComfyUI default output/)
+
+    Returns:
+        Dict with {"ui": {"images": [...]}} structure for preview
+    """
+    ui_images = []
+
+    for file_path in saved_paths:
+        try:
+            # Calculate relative path from output directory
+            relative_path = file_path.relative_to(output_base)
+
+            # Split into subfolder + filename
+            parts = relative_path.parts
+            if len(parts) > 1:
+                # Has subfolder(s): output/project/img.png -> subfolder="project"
+                subfolder = str(Path(*parts[:-1]))
+                filename = parts[-1]
+            else:
+                # No subfolder: output/img.png -> subfolder=""
+                subfolder = ""
+                filename = str(relative_path.name)
+
+            ui_images.append({
+                "filename": filename,
+                "subfolder": subfolder,
+                "type": "output"
+            })
+
+        except ValueError:
+            # Path is outside output_base (e.g., absolute path like D:/MyImages)
+            # Preview won't work - frontend can only serve from output/ or temp/
+            print(f"[MetaHub] Warning: Preview unavailable for {file_path.name} (outside output directory)")
+
+    return {
+        "ui": {
+            "images": ui_images
+        }
+    }
