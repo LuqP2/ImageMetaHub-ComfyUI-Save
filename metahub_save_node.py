@@ -125,6 +125,22 @@ class MetaHubSaveNode:
                     "default": "",
                     "tooltip": "Upscale model name"
                 }),
+                # Performance metrics overrides (advanced users)
+                "vram_peak_mb": ("FLOAT", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override VRAM peak (MB)"
+                }),
+                "gpu_device_override": ("STRING", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override GPU device name"
+                }),
+                "generation_time_override": ("FLOAT", {
+                    "default": None,
+                    "forceInput": True,
+                    "tooltip": "Override generation time (seconds)"
+                }),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -162,11 +178,18 @@ class MetaHubSaveNode:
         generation_time=0.0,
         filename_prefix="ComfyUI",
         upscale_model="",
+        vram_peak_mb=None,
+        gpu_device_override=None,
+        generation_time_override=None,
         prompt=None,
         extra_pnginfo=None,
         unique_id=None,
     ):
         global _HINT_SHOWN
+
+        # Start timing for auto-measurement
+        import time
+        start_time = time.time()
 
         try:
             workflow_json = utils.get_workflow_json(extra_pnginfo)
@@ -230,6 +253,32 @@ class MetaHubSaveNode:
 
             height, width = images[0].shape[0], images[0].shape[1]
 
+            # Calculate elapsed time and collect performance metrics
+            elapsed_seconds = time.time() - start_time
+
+            # Determine final generation time (use override if provided)
+            if generation_time_override is not None:
+                final_time = generation_time_override
+            elif elapsed_seconds > 0:
+                final_time = elapsed_seconds
+            else:
+                final_time = generation_time or 0.0
+
+            # Collect GPU metrics (auto-detect)
+            gpu_metrics = utils.collect_gpu_metrics()
+
+            # Collect version info
+            version_info = utils.collect_version_info()
+
+            # Calculate derived metrics
+            generation_time_ms = None
+            if final_time > 0:
+                generation_time_ms = int(final_time * 1000)
+
+            steps_per_second = None
+            if generation_time_ms and generation_time_ms > 0 and steps_value > 0:
+                steps_per_second = round((steps_value / (generation_time_ms / 1000)), 2)
+
             params = {
                 "positive": positive_value,
                 "negative": negative_value,
@@ -251,6 +300,14 @@ class MetaHubSaveNode:
                 "project_name": project_name,
                 "lora_list": lora_list,
                 "lora_hashes": lora_hashes,
+                # Performance metrics (Tier 1, 2, 3)
+                "vram_peak_mb": vram_peak_mb if vram_peak_mb is not None else gpu_metrics.get("vram_peak_mb"),
+                "gpu_device": gpu_device_override if gpu_device_override else gpu_metrics.get("gpu_device"),
+                "generation_time_ms": generation_time_ms,
+                "steps_per_second": steps_per_second,
+                "comfyui_version": version_info.get("comfyui_version"),
+                "torch_version": version_info.get("torch_version"),
+                "python_version": version_info.get("python_version"),
             }
 
             a1111_metadata = utils.build_a1111_metadata(params)

@@ -175,6 +175,128 @@ def calculate_lora_hashes(lora_list: List[dict]) -> Dict[str, str]:
 
 
 # ============================================================================
+# PERFORMANCE METRICS COLLECTION
+# ============================================================================
+
+def collect_gpu_metrics() -> Dict[str, Any]:
+    """
+    Auto-detects GPU metrics (VRAM peak, device name).
+
+    Handles CUDA, MPS (Mac Metal), and CPU-only setups.
+    Silent failures - never interrupts generation.
+
+    Returns:
+        dict with keys:
+            - vram_peak_mb: Peak VRAM usage in MB (None if unavailable)
+            - gpu_device: GPU device name string
+            - gpu_available: Boolean indicating if GPU is available
+    """
+    metrics = {
+        "vram_peak_mb": None,
+        "gpu_device": None,
+        "gpu_available": False,
+    }
+
+    try:
+        import torch
+
+        # Check CUDA availability
+        if torch.cuda.is_available():
+            metrics["gpu_available"] = True
+
+            # Get GPU device name
+            try:
+                device_name = torch.cuda.get_device_name(0)
+                metrics["gpu_device"] = device_name
+            except Exception as e:
+                print(f"[MetaHub] Warning: Could not get GPU name: {e}")
+
+            # Get peak VRAM usage (convert bytes to MB)
+            try:
+                vram_bytes = torch.cuda.max_memory_allocated(0)
+                vram_mb = vram_bytes / (1024 * 1024)
+                metrics["vram_peak_mb"] = round(vram_mb, 2)
+
+                # Reset peak memory counter for next generation
+                torch.cuda.reset_peak_memory_stats(0)
+            except Exception as e:
+                print(f"[MetaHub] Warning: Could not get VRAM usage: {e}")
+
+        # Check MPS (Mac Metal)
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            metrics["gpu_available"] = True
+            metrics["gpu_device"] = "Apple Metal Performance Shaders (MPS)"
+            # MPS doesn't support memory tracking yet
+            metrics["vram_peak_mb"] = None
+
+        else:
+            # CPU-only mode
+            metrics["gpu_available"] = False
+            metrics["gpu_device"] = "CPU (CUDA not available)"
+
+    except ImportError:
+        # torch not installed (should never happen in ComfyUI)
+        print("[MetaHub] Warning: PyTorch not found, GPU metrics unavailable")
+    except Exception as e:
+        print(f"[MetaHub] Warning: GPU metrics collection failed: {e}")
+
+    return metrics
+
+
+def collect_version_info() -> Dict[str, Optional[str]]:
+    """
+    Auto-detects software versions (Python, PyTorch, ComfyUI).
+
+    Silent failures - returns None for unavailable versions.
+
+    Returns:
+        dict with keys:
+            - python_version: Python version string (e.g., "3.10.12")
+            - torch_version: PyTorch version string (e.g., "2.0.1+cu118")
+            - comfyui_version: ComfyUI version string (e.g., "0.1.0")
+    """
+    versions = {
+        "comfyui_version": None,
+        "torch_version": None,
+        "python_version": None,
+    }
+
+    # Python version (always available)
+    try:
+        import sys
+        versions["python_version"] = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    except Exception:
+        pass
+
+    # PyTorch version
+    try:
+        import torch
+        versions["torch_version"] = torch.__version__
+    except Exception:
+        pass
+
+    # ComfyUI version (multiple detection methods)
+    try:
+        # Method 1: Try importing comfy module
+        try:
+            import comfy
+            if hasattr(comfy, '__version__'):
+                versions["comfyui_version"] = comfy.__version__
+        except (ImportError, AttributeError):
+            pass
+
+        # Method 2: Check for version file
+        if not versions["comfyui_version"]:
+            version_file = Path(__file__).parent.parent.parent / "comfy_version.txt"
+            if version_file.exists():
+                versions["comfyui_version"] = version_file.read_text().strip()
+    except Exception:
+        pass
+
+    return versions
+
+
+# ============================================================================
 # METADATA FORMATTING
 # ============================================================================
 
@@ -280,8 +402,22 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
             "project_name": params.get('project_name', ''),
         },
 
-        # Analytics (custom extension)
+        # Analytics (custom extension) - Performance/Benchmark metrics
         "analytics": {
+            # Tier 1: CRITICAL metrics
+            "vram_peak_mb": params.get('vram_peak_mb'),
+            "gpu_device": params.get('gpu_device'),
+            "generation_time_ms": params.get('generation_time_ms'),
+
+            # Tier 2: VERY USEFUL metrics
+            "steps_per_second": params.get('steps_per_second'),
+            "comfyui_version": params.get('comfyui_version'),
+
+            # Tier 3: NICE-TO-HAVE metrics
+            "torch_version": params.get('torch_version'),
+            "python_version": params.get('python_version'),
+
+            # Legacy field (kept for backward compatibility)
             "generation_time": params.get('generation_time', 0.0),
         },
 
