@@ -3,6 +3,7 @@ MetaHub Save Image Node for ComfyUI
 Advanced image saving with dual metadata support (A1111/Civitai + Image MetaHub)
 """
 
+import time
 from pathlib import Path
 from . import metadata_utils as utils
 from .workflow_extractor import WorkflowExtractor
@@ -139,7 +140,7 @@ class MetaHubSaveNode:
                 "generation_time_override": ("FLOAT", {
                     "default": None,
                     "forceInput": True,
-                    "tooltip": "Override generation time (seconds)"
+                    "tooltip": "Timestamp from MetaHub Timer Node (elapsed time calculated automatically)"
                 }),
             },
             "hidden": {
@@ -250,11 +251,12 @@ class MetaHubSaveNode:
             height, width = images[0].shape[0], images[0].shape[1]
 
             # Determine final generation time
-            # Priority: generation_time_override (from MetaHub Timer Node) > legacy generation_time
+            # generation_time_override is a TIMESTAMP from Timer Node, calculate elapsed time
             print(f"[MetaHub Save] generation_time_override={generation_time_override}, generation_time={generation_time}")
-            if generation_time_override is not None:
-                final_time = generation_time_override
-                print(f"[MetaHub Save] Using generation_time_override: {final_time}s")
+            if generation_time_override is not None and generation_time_override > 0:
+                # Calculate elapsed time from Timer timestamp
+                final_time = time.time() - generation_time_override
+                print(f"[MetaHub Save] Calculated elapsed time from Timer: {final_time:.2f}s")
             elif generation_time > 0:
                 final_time = generation_time
                 print(f"[MetaHub Save] Using legacy generation_time: {final_time}s")
