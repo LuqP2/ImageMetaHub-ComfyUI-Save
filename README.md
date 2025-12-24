@@ -70,11 +70,21 @@ Connect any override input to replace auto-detected values:
 - `positive`, `negative`
 - `denoise`
 
-**Performance Metrics (Advanced):**
-For custom benchmarking workflows:
+**Performance Metrics:**
+- **Automatic**: VRAM peak and GPU device are auto-detected
+- **Generation Time**: Use the **MetaHub Timer** node for accurate workflow timing
+
+**MetaHub Timer Node (Recommended for accurate timing):**
+1. Add "MetaHub Timer" node at the START of your workflow
+2. Connect any early input (e.g., from KSampler, LoadImage, etc.) to `trigger`
+3. Connect the Timer's `elapsed_time` output to Save Node's `generation_time_override`
+4. The `passthrough` output returns the original input unchanged (use for chaining)
+
+**Performance Overrides (Advanced):**
+For custom benchmarking, connect these hidden inputs:
 - `vram_peak_mb` - Override VRAM peak measurement
 - `gpu_device_override` - Override GPU device name
-- `generation_time_override` - Override generation time tracking
+- `generation_time_override` - Manual generation time (or from Timer node)
 
 All overrides use `forceInput: True` (hidden from UI, connection-only).
 
