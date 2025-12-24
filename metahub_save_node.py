@@ -8,6 +8,7 @@ from . import metadata_utils as utils
 from .workflow_extractor import WorkflowExtractor
 
 _HINT_SHOWN = False
+_WORKFLOW_TIMINGS = {}  # {workflow_id: start_time}
 
 
 class MetaHubSaveNode:
@@ -145,8 +146,7 @@ class MetaHubSaveNode:
             "hidden": {
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
-                "unique_id": "UNIQUE_ID",
-                "exec_time": "EXEC_TIME"
+                "unique_id": "UNIQUE_ID"
             },
         }
 
@@ -185,15 +185,24 @@ class MetaHubSaveNode:
         prompt=None,
         extra_pnginfo=None,
         unique_id=None,
-        exec_time=None,
     ):
-        global _HINT_SHOWN
+        global _HINT_SHOWN, _WORKFLOW_TIMINGS
+        import time
 
-        # Debug: Print all hidden parameters to find the timing parameter
-        print(f"[MetaHub DEBUG] prompt type: {type(prompt)}")
-        print(f"[MetaHub DEBUG] extra_pnginfo type: {type(extra_pnginfo)}")
-        print(f"[MetaHub DEBUG] unique_id: {unique_id}")
-        print(f"[MetaHub DEBUG] exec_time: {exec_time}")
+        # Auto-timing using workflow tracking
+        # Use a combination of inputs as workflow identifier
+        workflow_id = id(prompt) if prompt is not None else id(images)
+
+        # If this is a new workflow, mark start time
+        if workflow_id not in _WORKFLOW_TIMINGS:
+            _WORKFLOW_TIMINGS[workflow_id] = time.time()
+            # Clean old entries (keep only last 10 workflows)
+            if len(_WORKFLOW_TIMINGS) > 10:
+                oldest_key = min(_WORKFLOW_TIMINGS.keys(), key=lambda k: _WORKFLOW_TIMINGS[k])
+                del _WORKFLOW_TIMINGS[oldest_key]
+
+        # Calculate elapsed time since workflow start
+        workflow_elapsed = time.time() - _WORKFLOW_TIMINGS[workflow_id]
 
         try:
             workflow_json = utils.get_workflow_json(extra_pnginfo)
@@ -259,26 +268,20 @@ class MetaHubSaveNode:
 
             # Determine final generation time with priority:
             # 1. Manual override (generation_time_override input)
-            # 2. ComfyUI exec_time (total workflow execution time from ComfyUI)
+            # 2. Auto-measured workflow elapsed time (from global tracking)
             # 3. Legacy generation_time input (deprecated)
-            # 4. Fallback to 0
-            print(f"[MetaHub] exec_time from ComfyUI: {exec_time}")
-            print(f"[MetaHub] generation_time_override: {generation_time_override}")
-            print(f"[MetaHub] generation_time (legacy): {generation_time}")
-
             if generation_time_override is not None:
                 final_time = generation_time_override
-                print(f"[MetaHub] Using generation_time_override: {final_time}s")
-            elif exec_time is not None and exec_time > 0:
-                # exec_time is the total workflow execution time from ComfyUI (in seconds)
-                final_time = exec_time
-                print(f"[MetaHub] Using exec_time from ComfyUI: {final_time}s")
+                print(f"[MetaHub] Using generation_time_override: {final_time:.2f}s")
+            elif workflow_elapsed > 0.1:  # Sanity check (> 100ms)
+                final_time = workflow_elapsed
+                print(f"[MetaHub] Using auto-measured workflow time: {final_time:.2f}s")
             elif generation_time > 0:
                 final_time = generation_time
-                print(f"[MetaHub] Using legacy generation_time: {final_time}s")
+                print(f"[MetaHub] Using legacy generation_time: {final_time:.2f}s")
             else:
                 final_time = 0.0
-                print(f"[MetaHub] No timing data available, using fallback: {final_time}s")
+                print(f"[MetaHub] No timing data available, using fallback: {final_time:.2f}s")
 
             # Collect GPU metrics (auto-detect)
             gpu_metrics = utils.collect_gpu_metrics()
