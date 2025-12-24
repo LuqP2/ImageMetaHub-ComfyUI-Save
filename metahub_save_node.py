@@ -189,6 +189,12 @@ class MetaHubSaveNode:
     ):
         global _HINT_SHOWN
 
+        # Debug: Print all hidden parameters to find the timing parameter
+        print(f"[MetaHub DEBUG] prompt type: {type(prompt)}")
+        print(f"[MetaHub DEBUG] extra_pnginfo type: {type(extra_pnginfo)}")
+        print(f"[MetaHub DEBUG] unique_id: {unique_id}")
+        print(f"[MetaHub DEBUG] exec_time: {exec_time}")
+
         try:
             workflow_json = utils.get_workflow_json(extra_pnginfo)
             prompt_data = prompt if isinstance(prompt, dict) else workflow_json.get("prompt", {})
