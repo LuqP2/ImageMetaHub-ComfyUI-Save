@@ -145,7 +145,8 @@ class MetaHubSaveNode:
             "hidden": {
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
-                "unique_id": "UNIQUE_ID"
+                "unique_id": "UNIQUE_ID",
+                "exec_time": "EXEC_TIME"
             },
         }
 
@@ -184,12 +185,9 @@ class MetaHubSaveNode:
         prompt=None,
         extra_pnginfo=None,
         unique_id=None,
+        exec_time=None,
     ):
         global _HINT_SHOWN
-
-        # Start timing for auto-measurement
-        import time
-        start_time = time.time()
 
         try:
             workflow_json = utils.get_workflow_json(extra_pnginfo)
@@ -253,16 +251,28 @@ class MetaHubSaveNode:
 
             height, width = images[0].shape[0], images[0].shape[1]
 
-            # Calculate elapsed time and collect performance metrics
-            elapsed_seconds = time.time() - start_time
+            # Determine final generation time with priority:
+            # 1. Manual override (generation_time_override input)
+            # 2. ComfyUI exec_time (total workflow execution time from ComfyUI)
+            # 3. Legacy generation_time input (deprecated)
+            # 4. Fallback to 0
+            print(f"[MetaHub] exec_time from ComfyUI: {exec_time}")
+            print(f"[MetaHub] generation_time_override: {generation_time_override}")
+            print(f"[MetaHub] generation_time (legacy): {generation_time}")
 
-            # Determine final generation time (use override if provided)
             if generation_time_override is not None:
                 final_time = generation_time_override
-            elif elapsed_seconds > 0:
-                final_time = elapsed_seconds
+                print(f"[MetaHub] Using generation_time_override: {final_time}s")
+            elif exec_time is not None and exec_time > 0:
+                # exec_time is the total workflow execution time from ComfyUI (in seconds)
+                final_time = exec_time
+                print(f"[MetaHub] Using exec_time from ComfyUI: {final_time}s")
+            elif generation_time > 0:
+                final_time = generation_time
+                print(f"[MetaHub] Using legacy generation_time: {final_time}s")
             else:
-                final_time = generation_time or 0.0
+                final_time = 0.0
+                print(f"[MetaHub] No timing data available, using fallback: {final_time}s")
 
             # Collect GPU metrics (auto-detect)
             gpu_metrics = utils.collect_gpu_metrics()
