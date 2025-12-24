@@ -251,12 +251,16 @@ class MetaHubSaveNode:
 
             # Determine final generation time
             # Priority: generation_time_override (from MetaHub Timer Node) > legacy generation_time
+            print(f"[MetaHub Save] generation_time_override={generation_time_override}, generation_time={generation_time}")
             if generation_time_override is not None:
                 final_time = generation_time_override
+                print(f"[MetaHub Save] Using generation_time_override: {final_time}s")
             elif generation_time > 0:
                 final_time = generation_time
+                print(f"[MetaHub Save] Using legacy generation_time: {final_time}s")
             else:
                 final_time = 0.0
+                print(f"[MetaHub Save] No generation time provided")
 
             # Collect GPU metrics (auto-detect)
             gpu_metrics = utils.collect_gpu_metrics()

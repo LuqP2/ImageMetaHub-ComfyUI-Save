@@ -71,6 +71,7 @@ class MetaHubTimerNode:
 
         # Calculate elapsed time
         elapsed = current_time - _TIMER_START_TIMES[timer_id]
+        print(f"[MetaHub Timer] Elapsed time: {elapsed:.2f}s")
 
         # Passthrough the inputs unchanged + return elapsed time
         return (clip, image, latent, conditioning, elapsed)
