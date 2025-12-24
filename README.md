@@ -75,10 +75,20 @@ Connect any override input to replace auto-detected values:
 - **Generation Time**: Use the **MetaHub Timer** node for accurate workflow timing
 
 **MetaHub Timer Node (Recommended for accurate timing):**
-1. Add "MetaHub Timer" node at the START of your workflow
-2. Connect any early input (e.g., from KSampler, LoadImage, etc.) to `trigger`
-3. Connect the Timer's `elapsed_time` output to Save Node's `generation_time_override`
-4. The `passthrough` output returns the original input unchanged (use for chaining)
+1. Add "MetaHub Timer" node to your workflow
+2. Connect one of these inputs:
+   - `clip` - From CLIP loader or CLIPTextEncode (for total workflow time)
+   - `latent` - From KSampler (for sampling + post-processing time)
+   - `image` - From VAEDecode or image loader (for post-processing only)
+   - `conditioning` - From CLIPTextEncode
+3. Connect the corresponding output to continue your workflow (e.g., `clip` → CLIPTextEncode)
+4. Connect `elapsed_time` output to Save Node's `generation_time_override`
+
+**Multiple Timers (Advanced profiling):**
+You can add multiple Timer nodes to measure different workflow stages:
+- Timer at CLIP → total workflow time
+- Timer after KSampler → sampling + decode time
+- Timer after VAEDecode → save/post-processing time
 
 **Performance Overrides (Advanced):**
 For custom benchmarking, connect these hidden inputs:

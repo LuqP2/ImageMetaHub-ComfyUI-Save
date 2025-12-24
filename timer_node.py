@@ -24,49 +24,56 @@ class MetaHubTimerNode:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                # Accept any type as passthrough to ensure early execution
-                "trigger": ("*",),
+            "optional": {
+                "clip": ("CLIP",),
+                "image": ("IMAGE",),
+                "latent": ("LATENT",),
+                "conditioning": ("CONDITIONING",),
             },
         }
 
-    RETURN_TYPES = ("*", "FLOAT")
-    RETURN_NAMES = ("passthrough", "elapsed_time")
+    RETURN_TYPES = ("CLIP", "IMAGE", "LATENT", "CONDITIONING", "FLOAT")
+    RETURN_NAMES = ("clip", "image", "latent", "conditioning", "elapsed_time")
     FUNCTION = "measure_time"
     CATEGORY = "image/save"
     DESCRIPTION = "Measures workflow execution time for MetaHub Save Node"
+    OUTPUT_NODE = False
 
-    def measure_time(self, trigger):
+    def measure_time(self, clip=None, image=None, latent=None, conditioning=None):
         """
-        Measures elapsed time since workflow start.
+        Measures elapsed time since this timer node was first executed.
+        Each timer node instance tracks its own independent timing.
 
         Args:
-            trigger: Any input to trigger early execution (passed through unchanged)
+            clip: Optional CLIP input (passed through unchanged)
+            image: Optional IMAGE input (passed through unchanged)
+            latent: Optional LATENT input (passed through unchanged)
+            conditioning: Optional CONDITIONING input (passed through unchanged)
 
         Returns:
-            (passthrough, elapsed_time): Original input and elapsed time in seconds
+            (clip, image, latent, conditioning, elapsed_time): Original inputs and elapsed time in seconds
         """
         current_time = time.time()
 
-        # Use trigger object ID as workflow identifier
-        # This works because ComfyUI reuses the same objects within a workflow execution
-        workflow_id = id(trigger)
+        # Use this node instance's ID as unique timer identifier
+        # This allows multiple independent timers in the same workflow
+        timer_id = id(self)
 
-        # Start timer on first execution
-        if workflow_id not in _TIMER_START_TIMES:
-            _TIMER_START_TIMES[workflow_id] = current_time
-            print(f"[MetaHub Timer] Started timer for workflow")
+        # Start timer on first execution of this specific timer instance
+        if timer_id not in _TIMER_START_TIMES:
+            _TIMER_START_TIMES[timer_id] = current_time
+            print(f"[MetaHub Timer] Started timer #{timer_id}")
 
-            # Cleanup old timers (keep only last 20)
-            if len(_TIMER_START_TIMES) > 20:
+            # Cleanup old timers (keep only last 50 to support multiple timers)
+            if len(_TIMER_START_TIMES) > 50:
                 oldest_key = min(_TIMER_START_TIMES.keys(), key=lambda k: _TIMER_START_TIMES[k])
                 del _TIMER_START_TIMES[oldest_key]
 
         # Calculate elapsed time
-        elapsed = current_time - _TIMER_START_TIMES[workflow_id]
+        elapsed = current_time - _TIMER_START_TIMES[timer_id]
 
-        # Passthrough the input unchanged + return elapsed time
-        return (trigger, elapsed)
+        # Passthrough the inputs unchanged + return elapsed time
+        return (clip, image, latent, conditioning, elapsed)
 
 
 NODE_CLASS_MAPPINGS = {
