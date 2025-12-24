@@ -5,6 +5,7 @@ Advanced image saving node for ComfyUI with dual metadata support.
 ## Features
 
 - **Auto-Extraction** - Detects sampler params, prompts, model/VAE, and LoRAs directly from your workflow
+- **Performance Metrics** - Auto-tracks GPU usage, VRAM peak, generation time, and software versions
 - **Multi-Format** - PNG, JPEG, and WebP with metadata injection
 - **Filename Patterns** - Placeholder-based filenames with sanitization
 - **A1111/Civitai Compatible** - Saves metadata in tEXt chunk ("parameters") recognized by Automatic1111, Civitai, and most SD tools
@@ -60,7 +61,22 @@ Auto-detected fields:
 - VAE name
 
 ### Override (Optional)
-Connect any override input to replace auto-detected values (seed, steps, cfg, sampler_name, scheduler, model_name, positive, negative, denoise, vae_name).
+
+**Generation Parameters:**
+Connect any override input to replace auto-detected values:
+- `seed`, `steps`, `cfg`
+- `sampler_name`, `scheduler`
+- `model_name`, `vae_name`
+- `positive`, `negative`
+- `denoise`
+
+**Performance Metrics (Advanced):**
+For custom benchmarking workflows:
+- `vram_peak_mb` - Override VRAM peak measurement
+- `gpu_device_override` - Override GPU device name
+- `generation_time_override` - Override generation time tracking
+
+All overrides use `forceInput: True` (hidden from UI, connection-only).
 
 ### Filename Pattern
 Use `filename_pattern` to customize names (default `ComfyUI_%counter%`). Invalid filename characters are sanitized and missing values become `unknown`. `filename_prefix` is deprecated but still supported.
@@ -96,6 +112,36 @@ Organize your generations with Image MetaHub Pro features:
 - **user_tags**: Tag your images (e.g., "portrait, fantasy, character")
 - **notes**: Add generation notes or experiments
 - **project_name**: Group images by project
+
+### Performance Metrics (Auto-Tracked)
+
+The node automatically collects GPU and performance metrics for every generation:
+
+**Tier 1 - Critical Metrics:**
+- **VRAM Peak** - Peak VRAM usage in MB (CUDA GPUs only)
+- **GPU Device** - GPU name (e.g., "NVIDIA GeForce RTX 3090")
+- **Generation Time** - Total generation time in milliseconds
+
+**Tier 2 - Very Useful:**
+- **Steps per Second** - Performance benchmark (steps / generation_time)
+- **ComfyUI Version** - Your ComfyUI version
+
+**Tier 3 - Nice-to-Have:**
+- **PyTorch Version** - PyTorch version with CUDA info
+- **Python Version** - Python runtime version
+
+**Auto-Detection:**
+- ✅ **CUDA** (NVIDIA) - Full metrics including VRAM tracking
+- ✅ **MPS** (Apple Metal) - GPU device name (VRAM not available)
+- ✅ **CPU** - Marks as "CPU (CUDA not available)"
+
+**Advanced Overrides (Optional):**
+For custom benchmarking workflows, connect these inputs:
+- `vram_peak_mb` - Override VRAM peak (FLOAT)
+- `gpu_device_override` - Override GPU device name (STRING)
+- `generation_time_override` - Override generation time in seconds (FLOAT)
+
+All metrics are stored in the `analytics` field of the Image MetaHub metadata chunk and displayed in the **Performance** section of Image MetaHub App.
 
 ## Configuration (Optional)
 
@@ -142,6 +188,15 @@ Steps: 20, Sampler: euler, CFG scale: 7.0, Seed: 12345, Size: 512x768, Model: my
     "notes": "Experimental composition",
     "project_name": "Character Design"
   },
+  "analytics": {
+    "vram_peak_mb": 8234.5,
+    "gpu_device": "NVIDIA GeForce RTX 3090",
+    "generation_time_ms": 1523,
+    "steps_per_second": 13.2,
+    "comfyui_version": "0.1.0",
+    "torch_version": "2.0.1+cu118",
+    "python_version": "3.10.12"
+  },
   "workflow": { }
 }
 ```
@@ -151,10 +206,19 @@ Steps: 20, Sampler: euler, CFG scale: 7.0, Seed: 12345, Size: 512x768, Model: my
 This node is the official companion for [Image MetaHub](https://github.com/LuqP2/Image-MetaHub).
 
 Images saved with this node are fully compatible with Image MetaHub's:
-- Search and filtering
-- LoRA detection
-- Analytics dashboard
-- IMH Pro features
+- **Instant parsing** - MetaHub chunk extraction (no graph traversal needed)
+- **Performance section** - Displays GPU metrics, VRAM, generation time, and versions
+- **Search and filtering** - Full metadata indexing
+- **LoRA detection** - Automatic LoRA weight extraction
+- **Analytics dashboard** - Performance benchmarking
+- **IMH Pro features** - Tags, notes, and project organization
+
+The Performance section in Image MetaHub App displays:
+- Generation time with smart formatting (ms/s/m+s)
+- VRAM usage with GPU percentage (e.g., "8.0 GB / 24 GB (33%)")
+- GPU device name
+- Steps per second benchmark
+- Software versions (ComfyUI, PyTorch, Python)
 
 ## Troubleshooting
 
@@ -172,13 +236,25 @@ Images saved with this node are fully compatible with Image MetaHub's:
 - Check folder permissions
 - Try using default output path (leave `output_path` empty)
 
+### "Performance metrics not showing in Image MetaHub"
+- Ensure you're using the latest version of both the node and Image MetaHub App
+- Performance section only appears for images saved with MetaHub Save Node
+- Legacy images saved with default ComfyUI Save Image won't have performance data
+
+### "VRAM peak is None/null"
+- VRAM tracking requires CUDA (NVIDIA GPUs)
+- MPS (Apple Metal) and CPU modes don't support VRAM tracking
+- This is expected behavior and not an error
+
 ## Performance
 
 - **First image**: ~200ms overhead (hash calculation)
 - **Subsequent images**: ~60ms overhead (hashes cached)
 - **Batch processing**: Minimal overhead per image
+- **GPU metrics**: <1ms overhead (PyTorch API calls)
+- **Version detection**: <5ms overhead (cached after first call)
 
-Hash calculation is cached in memory, so repeated generations with the same models are very fast.
+Hash calculation is cached in memory, so repeated generations with the same models are very fast. Performance metrics collection has negligible impact on generation speed.
 
 ## License
 
