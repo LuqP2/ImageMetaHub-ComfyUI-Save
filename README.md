@@ -1,5 +1,7 @@
 # MetaHub Save Image - ComfyUI Custom Node
 
+Official companion node for [Image MetaHub](https://github.com/LuqP2/Image-MetaHub).
+
 Advanced image saving node for ComfyUI with dual metadata support.
 
 ## Features
@@ -289,3 +291,4 @@ Issues and pull requests welcome at https://github.com/LuqP2/ImageMetaHub-ComfyU
 ## Credits
 
 Developed for the [Image MetaHub](https://github.com/LuqP2/Image-MetaHub) ecosystem.
+
