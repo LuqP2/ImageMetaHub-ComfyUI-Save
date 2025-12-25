@@ -1,4 +1,8 @@
 # MetaHub Save Image - ComfyUI Custom Node
+[![Official Companion](https://img.shields.io/badge/Official%20companion-Image%20MetaHub-2b6cb0)](https://github.com/LuqP2/Image-MetaHub)
+
+
+
 
 Official companion node for [Image MetaHub](https://github.com/LuqP2/Image-MetaHub).
 
