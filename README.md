@@ -248,6 +248,8 @@ The Performance section in Image MetaHub App displays:
 - Steps per second benchmark
 - Software versions (ComfyUI, PyTorch, Python)
 
+**Generating Variations**: Image MetaHub App includes a "Generate with ComfyUI" feature that creates simple txt2img workflows from saved metadata and sends them to your ComfyUI instance via API. See the [Image MetaHub documentation](https://github.com/LuqP2/Image-MetaHub) for details on workflow generation and ComfyUI integration features.
+
 ## Troubleshooting
 
 ### "Model hash is 0000000000"
