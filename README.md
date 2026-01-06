@@ -31,24 +31,37 @@ Advanced image saving node for ComfyUI with dual metadata support.
 3. Install the node
 4. Restart ComfyUI
 
-The node is published on the official Comfy Registry:  
-https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save
+Published on the official Comfy Registry:
+[https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save)
 
 ---
 
-### Method 2: Clone Repository
+### Method 2: Comfy CLI
+
+```bash
+comfy node install imagemetahub-comfyui-save
+```
+
+Restart ComfyUI after installation.
+
+---
+
+### Method 3: Clone Repository (Manual)
 
 1. Navigate to your ComfyUI custom nodes directory:
+
    ```bash
    cd ComfyUI/custom_nodes
    ```
 
 2. Clone this repository:
+
    ```bash
    git clone https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save.git
    ```
 
 3. Install dependencies:
+
    ```bash
    cd ImageMetaHub-ComfyUI-Save
    pip install -r requirements.txt
@@ -56,12 +69,6 @@ https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-s
 
 4. Restart ComfyUI
 
-### Method 3: Manual Installation
-
-1. Download this repository as ZIP
-2. Extract to `ComfyUI/custom_nodes/ImageMetaHub-ComfyUI-Save`
-3. Install dependencies: `pip install Pillow>=10.0.0 numpy>=1.24.0 piexif>=1.1.3`
-4. Restart ComfyUI
 
 ## Usage
 
