@@ -29,7 +29,7 @@ Documentation = "https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save/wiki"
 "Bug Tracker" = "https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save/issues"
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "image-metahub"
 DisplayName = "ImageMetaHub-ComfyUI-Save"
 Icon = ""
 includes = [] 
