@@ -39,6 +39,14 @@ class MetaHubTimerNode:
     DESCRIPTION = "Measures workflow execution time for MetaHub Save Node"
     OUTPUT_NODE = False
 
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        """
+        Force this node to ALWAYS re-execute, never use cached results.
+        This is critical because we need a fresh timestamp for every generation.
+        """
+        return float("nan")  # NaN forces ComfyUI to always re-execute
+
     def measure_time(self, clip=None, image=None, latent=None, conditioning=None):
         """
         Records the current timestamp when this node executes.
