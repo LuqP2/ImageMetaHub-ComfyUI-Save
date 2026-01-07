@@ -8,7 +8,8 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
@@ -427,6 +428,52 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
     }
 
 
+def _serialize_metadata_json(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return None
+
+
+def _get_workflow_prompt_texts(imh_metadata: dict) -> Tuple[Optional[str], Optional[str]]:
+    if not imh_metadata:
+        return None, None
+    workflow_text = _serialize_metadata_json(imh_metadata.get("workflow"))
+    prompt_text = _serialize_metadata_json(
+        imh_metadata.get("prompt_api") or imh_metadata.get("prompt")
+    )
+    return workflow_text, prompt_text
+
+
+def build_comfyui_xmp_packet(imh_metadata: dict) -> Optional[bytes]:
+    workflow_text, prompt_text = _get_workflow_prompt_texts(imh_metadata)
+    if not workflow_text and not prompt_text:
+        return None
+
+    fields = []
+    if workflow_text:
+        fields.append(f"<comfyui:workflow>{xml_escape(workflow_text)}</comfyui:workflow>")
+    if prompt_text:
+        fields.append(f"<comfyui:prompt>{xml_escape(prompt_text)}</comfyui:prompt>")
+
+    xmp_payload = (
+        '<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+        '<rdf:Description xmlns:comfyui="https://comfyui.org/ns/1.0/">'
+        f"{''.join(fields)}"
+        '</rdf:Description>'
+        '</rdf:RDF>'
+        '</x:xmpmeta>'
+        '<?xpacket end="w"?>'
+    )
+    return xmp_payload.encode("utf-8")
+
+
 # ============================================================================
 # WORKFLOW PARSING
 # ============================================================================
@@ -545,6 +592,11 @@ def save_png_with_metadata(image: Image.Image, image_path: str, a1111_metadata: 
         png_info.add_text("parameters", a1111_metadata or "")
         imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
         png_info.add_itxt("imagemetahub_data", imh_json)
+        workflow_text, prompt_text = _get_workflow_prompt_texts(imh_metadata)
+        if workflow_text:
+            png_info.add_itxt("workflow", workflow_text)
+        if prompt_text:
+            png_info.add_itxt("prompt", prompt_text)
         image.save(image_path, "PNG", pnginfo=png_info, compress_level=4)
     except Exception as e:
         print(f"[MetaHub] Warning: PNG metadata save failed for {image_path}: {e}")
@@ -582,12 +634,22 @@ def save_jpeg_with_metadata(
         if image.mode in ("RGBA", "LA", "P"):
             image = image.convert("RGB")
         save_kwargs: Dict[str, Any] = {"format": "JPEG", "quality": quality}
+        xmp_bytes = build_comfyui_xmp_packet(imh_metadata)
         exif_bytes = _build_exif_bytes(a1111_metadata, imh_metadata)
         if exif_bytes:
             save_kwargs["exif"] = exif_bytes
         elif a1111_metadata:
             save_kwargs["comment"] = a1111_metadata.encode("utf-8", errors="replace")
-        image.save(image_path, **save_kwargs)
+        if xmp_bytes:
+            save_kwargs["xmp"] = xmp_bytes
+        try:
+            image.save(image_path, **save_kwargs)
+        except TypeError:
+            if "xmp" in save_kwargs:
+                save_kwargs.pop("xmp", None)
+                image.save(image_path, **save_kwargs)
+            else:
+                raise
     except Exception as e:
         print(f"[MetaHub] Warning: JPEG metadata save failed for {image_path}: {e}")
         image.save(image_path, "JPEG", quality=quality)
@@ -605,12 +667,22 @@ def save_webp_with_metadata(
     """
     try:
         save_kwargs: Dict[str, Any] = {"format": "WEBP", "quality": quality}
+        xmp_bytes = build_comfyui_xmp_packet(imh_metadata)
         exif_bytes = _build_exif_bytes(a1111_metadata, imh_metadata)
         if exif_bytes:
             save_kwargs["exif"] = exif_bytes
         elif a1111_metadata:
             save_kwargs["comment"] = a1111_metadata
-        image.save(image_path, **save_kwargs)
+        if xmp_bytes:
+            save_kwargs["xmp"] = xmp_bytes
+        try:
+            image.save(image_path, **save_kwargs)
+        except TypeError:
+            if "xmp" in save_kwargs:
+                save_kwargs.pop("xmp", None)
+                image.save(image_path, **save_kwargs)
+            else:
+                raise
     except Exception as e:
         print(f"[MetaHub] Warning: WebP metadata save failed for {image_path}: {e}")
         image.save(image_path, "WEBP", quality=quality)
