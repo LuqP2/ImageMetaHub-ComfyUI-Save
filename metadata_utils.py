@@ -554,6 +554,82 @@ def get_workflow_json(extra_pnginfo: Optional[dict]) -> dict:
     return {}
 
 
+def ensure_prompt_in_workflow(workflow_json: dict, prompt_data: Optional[dict]) -> dict:
+    """
+    Ensures workflow JSON includes prompt data when extra_pnginfo is missing it.
+    """
+    if not isinstance(workflow_json, dict):
+        workflow_json = {}
+
+    if isinstance(prompt_data, dict) and prompt_data:
+        existing_prompt = workflow_json.get("prompt")
+        if not isinstance(existing_prompt, dict) or not existing_prompt:
+            workflow_json["prompt"] = prompt_data
+
+    return workflow_json
+
+
+def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -> None:
+    """
+    Ensures saved workflow keeps MetaHubSaveNode instead of SaveImage.
+    """
+    if not isinstance(workflow_json, dict):
+        return
+
+    target_id = str(save_node_id) if save_node_id is not None else None
+
+    prompt = workflow_json.get("prompt")
+    if isinstance(prompt, dict):
+        if target_id and target_id in prompt:
+            node = prompt.get(target_id)
+            if isinstance(node, dict):
+                node["class_type"] = "MetaHubSaveNode"
+        else:
+            save_nodes = [
+                node_id
+                for node_id, node in prompt.items()
+                if isinstance(node, dict) and node.get("class_type") == "SaveImage"
+            ]
+            if len(save_nodes) == 1:
+                prompt[save_nodes[0]]["class_type"] = "MetaHubSaveNode"
+
+    workflow = workflow_json.get("workflow")
+    if not isinstance(workflow, dict):
+        return
+    nodes = workflow.get("nodes")
+    if not isinstance(nodes, list):
+        return
+
+    def update_workflow_node(node: dict) -> None:
+        if "type" in node:
+            node["type"] = "MetaHubSaveNode"
+        if "class_type" in node:
+            node["class_type"] = "MetaHubSaveNode"
+        if node.get("title") in ("Save Image", "SaveImage"):
+            node["title"] = "MetaHub Save Image"
+        props = node.get("properties")
+        if isinstance(props, dict) and props.get("node_name") in ("SaveImage", "Save Image"):
+            props["node_name"] = "MetaHub Save Image"
+
+    if target_id:
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = node.get("id")
+            if node_id is not None and str(node_id) == target_id:
+                update_workflow_node(node)
+                return
+    else:
+        save_nodes = [
+            node
+            for node in nodes
+            if isinstance(node, dict)
+            and (node.get("type") == "SaveImage" or node.get("class_type") == "SaveImage")
+        ]
+        if len(save_nodes) == 1:
+            update_workflow_node(save_nodes[0])
+
+
 # ============================================================================
 # PNG CHUNK INJECTION
 # ============================================================================

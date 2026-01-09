@@ -194,9 +194,13 @@ class MetaHubSaveNode:
             if not isinstance(prompt_data, dict):
                 prompt_data = {}
 
+            workflow_json = utils.ensure_prompt_in_workflow(workflow_json, prompt_data)
+            save_node_id = str(unique_id) if unique_id is not None else None
+            utils.ensure_metahub_save_node(workflow_json, save_node_id)
+
             extractor = WorkflowExtractor(prompt_data)
             extracted, missing_fields = extractor.extract(
-                save_node_id=str(unique_id) if unique_id is not None else None
+                save_node_id=save_node_id
             )
             lora_list = extracted.get("lora_list") or utils.extract_loras_from_workflow(workflow_json)
 
