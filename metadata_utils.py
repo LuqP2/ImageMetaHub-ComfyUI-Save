@@ -449,6 +449,17 @@ def _get_workflow_prompt_texts(imh_metadata: dict) -> Tuple[Optional[str], Optio
     return workflow_text, prompt_text
 
 
+def _serialize_metadata_json_ascii(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=True)
+    except Exception:
+        return None
+
+
 def build_comfyui_xmp_packet(imh_metadata: dict) -> Optional[bytes]:
     workflow_text, prompt_text = _get_workflow_prompt_texts(imh_metadata)
     if not workflow_text and not prompt_text:
@@ -547,9 +558,24 @@ def get_workflow_json(extra_pnginfo: Optional[dict]) -> dict:
 
     # extra_pnginfo can be a dict or list
     if isinstance(extra_pnginfo, list) and len(extra_pnginfo) > 0:
-        return extra_pnginfo[0]
-    elif isinstance(extra_pnginfo, dict):
+        extra_pnginfo = extra_pnginfo[0]
+    if not isinstance(extra_pnginfo, dict):
+        return {}
+
+    if isinstance(extra_pnginfo.get("extra_pnginfo"), dict):
+        extra_pnginfo = extra_pnginfo["extra_pnginfo"]
+
+    if "workflow" in extra_pnginfo or "prompt" in extra_pnginfo:
         return extra_pnginfo
+
+    if "nodes" in extra_pnginfo and "links" in extra_pnginfo:
+        return {"workflow": extra_pnginfo}
+
+    if extra_pnginfo and all(
+        isinstance(value, dict) and "class_type" in value
+        for value in extra_pnginfo.values()
+    ):
+        return {"prompt": extra_pnginfo}
 
     return {}
 
@@ -579,6 +605,13 @@ def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -
     target_id = str(save_node_id) if save_node_id is not None else None
 
     prompt = workflow_json.get("prompt")
+    if isinstance(prompt, str):
+        try:
+            prompt = json.loads(prompt)
+        except Exception:
+            prompt = None
+        else:
+            workflow_json["prompt"] = prompt
     if isinstance(prompt, dict):
         if target_id and target_id in prompt:
             node = prompt.get(target_id)
@@ -594,6 +627,13 @@ def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -
                 prompt[save_nodes[0]]["class_type"] = "MetaHubSaveNode"
 
     workflow = workflow_json.get("workflow")
+    if isinstance(workflow, str):
+        try:
+            workflow = json.loads(workflow)
+        except Exception:
+            workflow = None
+        else:
+            workflow_json["workflow"] = workflow
     if not isinstance(workflow, dict):
         return
     nodes = workflow.get("nodes")
@@ -668,11 +708,14 @@ def save_png_with_metadata(image: Image.Image, image_path: str, a1111_metadata: 
         png_info.add_text("parameters", a1111_metadata or "")
         imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
         png_info.add_itxt("imagemetahub_data", imh_json)
-        workflow_text, prompt_text = _get_workflow_prompt_texts(imh_metadata)
+        workflow_text = _serialize_metadata_json_ascii(imh_metadata.get("workflow"))
+        prompt_text = _serialize_metadata_json_ascii(
+            imh_metadata.get("prompt_api") or imh_metadata.get("prompt")
+        )
         if workflow_text:
-            png_info.add_itxt("workflow", workflow_text)
+            png_info.add_text("workflow", workflow_text)
         if prompt_text:
-            png_info.add_itxt("prompt", prompt_text)
+            png_info.add_text("prompt", prompt_text)
         image.save(image_path, "PNG", pnginfo=png_info, compress_level=4)
     except Exception as e:
         print(f"[MetaHub] Warning: PNG metadata save failed for {image_path}: {e}")

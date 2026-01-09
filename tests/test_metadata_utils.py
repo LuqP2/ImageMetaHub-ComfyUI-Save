@@ -1,3 +1,4 @@
+import json
 import copy
 
 from metadata_utils import (
@@ -5,7 +6,10 @@ from metadata_utils import (
     build_imh_metadata,
     ensure_metahub_save_node,
     ensure_prompt_in_workflow,
+    get_workflow_json,
+    save_png_with_metadata,
 )
+from PIL import Image
 
 
 def test_ensure_prompt_in_workflow_adds_prompt():
@@ -79,6 +83,14 @@ def test_ensure_metahub_save_node_updates_workflow_node_by_id():
     assert node["properties"]["node_name"] == "MetaHub Save Image"
 
 
+def test_get_workflow_json_wraps_raw_workflow():
+    extra_pnginfo = {"nodes": [], "links": []}
+
+    result = get_workflow_json(extra_pnginfo)
+
+    assert result == {"workflow": extra_pnginfo}
+
+
 def test_build_imh_metadata_includes_workflow_and_prompt():
     params = {
         "positive": "pos",
@@ -128,3 +140,25 @@ def test_build_a1111_metadata_formats_text():
     assert "Size: 512x768" in text
     assert "Model: model.safetensors" in text
     assert "Model hash: abcdef1234" in text
+
+
+def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
+    imh_metadata = {
+        "workflow": {"nodes": []},
+        "prompt_api": {"1": {"class_type": "KSampler"}},
+    }
+    image = Image.new("RGB", (2, 2), color=(0, 0, 0))
+    file_path = tmp_path / "test.png"
+
+    save_png_with_metadata(image, str(file_path), "params", imh_metadata)
+
+    loaded = Image.open(file_path)
+    text = getattr(loaded, "text", {})
+
+    workflow_text = text.get("workflow")
+    prompt_text = text.get("prompt")
+
+    assert workflow_text
+    assert prompt_text
+    assert json.loads(workflow_text) == imh_metadata["workflow"]
+    assert json.loads(prompt_text) == imh_metadata["prompt_api"]
