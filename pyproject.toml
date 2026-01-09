@@ -1,7 +1,7 @@
 [project]
 name = "imagemetahub-comfyui-save"
 description = "Official companion node for Image MetaHub. Saves A1111/Civitai-compatible parameters plus extended Image MetaHub metadata (workflow JSON, SHA256 model hashes, VRAM peak/total, GPU device, generation time, and steps/sec) for reproducibility and benchmarking."
-version = "1.0.2"
+version = "1.0.3"
 license = {file = "LICENSE"} 
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
