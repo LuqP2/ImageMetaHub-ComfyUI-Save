@@ -5,8 +5,13 @@ Advanced image saving with dual metadata support (A1111/Civitai + Image MetaHub)
 
 import time
 from pathlib import Path
-from . import metadata_utils as utils
-from .workflow_extractor import WorkflowExtractor
+
+try:
+    from . import metadata_utils as utils
+    from .workflow_extractor import WorkflowExtractor
+except ImportError:
+    import metadata_utils as utils
+    from workflow_extractor import WorkflowExtractor
 
 _HINT_SHOWN = False
 

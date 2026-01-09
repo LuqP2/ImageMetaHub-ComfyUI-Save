@@ -3,8 +3,12 @@ MetaHub Save Image - ComfyUI Custom Node
 Entry point for node registration
 """
 
-from .metahub_save_node import MetaHubSaveNode
-from .timer_node import MetaHubTimerNode
+try:
+    from .metahub_save_node import MetaHubSaveNode
+    from .timer_node import MetaHubTimerNode
+except ImportError:
+    from metahub_save_node import MetaHubSaveNode
+    from timer_node import MetaHubTimerNode
 
 NODE_CLASS_MAPPINGS = {
     "MetaHubSaveNode": MetaHubSaveNode,
