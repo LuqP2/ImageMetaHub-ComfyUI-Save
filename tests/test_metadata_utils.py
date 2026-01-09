@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import copy
 
 from metadata_utils import (
@@ -10,6 +11,24 @@ from metadata_utils import (
     save_png_with_metadata,
 )
 from PIL import Image
+
+
+def _read_png_text_chunks(path: Path) -> dict:
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise AssertionError("Not a PNG file")
+    offset = 8
+    chunks = {}
+    while offset + 8 <= len(data):
+        length = int.from_bytes(data[offset:offset + 4], "big")
+        chunk_type = data[offset + 4:offset + 8]
+        chunk_data = data[offset + 8:offset + 8 + length]
+        offset += 12 + length
+        if chunk_type == b"tEXt":
+            if b"\x00" in chunk_data:
+                keyword, text = chunk_data.split(b"\x00", 1)
+                chunks[keyword.decode("latin-1")] = text.decode("latin-1")
+    return chunks
 
 
 def test_ensure_prompt_in_workflow_adds_prompt():
@@ -162,3 +181,7 @@ def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
     assert prompt_text
     assert json.loads(workflow_text) == imh_metadata["workflow"]
     assert json.loads(prompt_text) == imh_metadata["prompt_api"]
+
+    chunk_text = _read_png_text_chunks(file_path)
+    assert "workflow" in chunk_text
+    assert "prompt" in chunk_text
