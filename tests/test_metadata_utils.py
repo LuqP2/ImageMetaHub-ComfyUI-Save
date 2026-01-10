@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 import copy
 
@@ -29,6 +30,11 @@ def _read_png_text_chunks(path: Path) -> dict:
                 keyword, text = chunk_data.split(b"\x00", 1)
                 chunks[keyword.decode("latin-1")] = text.decode("latin-1")
     return chunks
+
+
+def _save_simple_png(path: Path) -> None:
+    image = Image.new("RGB", (2, 2), color=(0, 0, 0))
+    image.save(path, "PNG")
 
 
 def test_ensure_prompt_in_workflow_adds_prompt():
@@ -110,6 +116,22 @@ def test_get_workflow_json_wraps_raw_workflow():
     assert result == {"workflow": extra_pnginfo}
 
 
+def test_get_workflow_json_accepts_extra_pnginfo_envelope():
+    extra_pnginfo = {"extra_pnginfo": {"workflow": {"nodes": []}}}
+
+    result = get_workflow_json(extra_pnginfo)
+
+    assert result == {"workflow": {"nodes": []}}
+
+
+def test_get_workflow_json_accepts_prompt_dict():
+    prompt = {"1": {"class_type": "KSampler", "inputs": {}}}
+
+    result = get_workflow_json(prompt)
+
+    assert result == {"prompt": prompt}
+
+
 def test_build_imh_metadata_includes_workflow_and_prompt():
     params = {
         "positive": "pos",
@@ -132,6 +154,32 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
     assert imh["generator"] == "ComfyUI"
     assert imh["workflow"] == workflow_json["workflow"]
     assert imh["prompt_api"] == workflow_json["prompt"]
+
+
+def test_build_imh_metadata_sanitizes_nan():
+    params = {
+        "positive": "pos",
+        "negative": "neg",
+        "seed": 123,
+        "steps": 20,
+        "cfg": 7.5,
+        "sampler": "euler",
+        "scheduler": "normal",
+        "model_name": "model.safetensors",
+        "model_hash": "abcdef1234",
+        "width": 512,
+        "height": 768,
+        "lora_list": [],
+    }
+    workflow_json = {
+        "workflow": {"nodes": [{"id": 1, "widgets_values": [float("nan")]}]},
+        "prompt": {"1": {"class_type": "KSampler", "inputs": {"seed": float("nan")}}},
+    }
+
+    imh = build_imh_metadata(params, workflow_json)
+
+    assert imh["workflow"]["nodes"][0]["widgets_values"][0] is None
+    assert imh["prompt_api"]["1"]["inputs"]["seed"] is None
 
 
 def test_build_a1111_metadata_formats_text():
@@ -185,3 +233,42 @@ def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
     chunk_text = _read_png_text_chunks(file_path)
     assert "workflow" in chunk_text
     assert "prompt" in chunk_text
+
+
+def test_save_png_with_metadata_roundtrip_for_comfyui(tmp_path):
+    params = {
+        "positive": "pos",
+        "negative": "neg",
+        "seed": 123,
+        "steps": 20,
+        "cfg": 7.5,
+        "sampler": "euler",
+        "scheduler": "normal",
+        "model_name": "model.safetensors",
+        "model_hash": "abcdef1234",
+        "width": 512,
+        "height": 768,
+        "lora_list": [],
+    }
+    workflow_json = {
+        "workflow": {"nodes": [{"id": 7, "type": "SaveImage", "title": "Save Image"}], "links": []},
+        "prompt": {"7": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}}},
+    }
+
+    ensure_metahub_save_node(workflow_json, "7")
+    imh_metadata = build_imh_metadata(params, workflow_json)
+
+    file_path = tmp_path / "roundtrip.png"
+    _save_simple_png(file_path)
+    image = Image.open(file_path)
+    save_png_with_metadata(image, str(file_path), "params", imh_metadata)
+
+    text_chunks = _read_png_text_chunks(file_path)
+    assert "workflow" in text_chunks
+    assert "prompt" in text_chunks
+
+    workflow_loaded = json.loads(text_chunks["workflow"])
+    prompt_loaded = json.loads(text_chunks["prompt"])
+
+    assert workflow_loaded["nodes"][0]["type"] == "MetaHubSaveNode"
+    assert prompt_loaded["7"]["class_type"] == "MetaHubSaveNode"
