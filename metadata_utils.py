@@ -368,6 +368,18 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
     Returns:
         JSON-serializable dict for IMH metadata
     """
+    def _sanitize(value: Any) -> Any:
+        if isinstance(value, float) and np.isnan(value):
+            return None
+        if isinstance(value, dict):
+            return {k: _sanitize(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_sanitize(v) for v in value]
+        return value
+
+    safe_workflow = _sanitize(workflow_json.get('workflow', {}))
+    safe_prompt = _sanitize(workflow_json.get('prompt', {}))
+
     return {
         # CRITICAL: Required field for IMH detection
         "generator": "ComfyUI",
@@ -423,8 +435,8 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
         },
 
         # Complete workflow (used by parser for re-parsing if needed)
-        "workflow": workflow_json.get('workflow', {}),
-        "prompt_api": workflow_json.get('prompt', {}),
+        "workflow": safe_workflow,
+        "prompt_api": safe_prompt,
     }
 
 
