@@ -309,6 +309,8 @@ class MetaHubSaveNode:
                 "project_name": project_name,
                 "lora_list": lora_list,
                 "lora_hashes": lora_hashes,
+                "generation_type": extracted.get("generation_type"),
+                "source_image": extracted.get("source_image"),
                 # Performance metrics (Tier 1, 2, 3)
                 "vram_peak_mb": vram_peak_mb if vram_peak_mb is not None else gpu_metrics.get("vram_peak_mb"),
                 "gpu_device": gpu_device_override if gpu_device_override else gpu_metrics.get("gpu_device"),

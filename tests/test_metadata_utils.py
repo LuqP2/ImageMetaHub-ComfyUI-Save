@@ -146,6 +146,8 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
         "width": 512,
         "height": 768,
         "lora_list": [],
+        "generation_type": "img2img",
+        "source_image": {"fileName": "base.png", "relativePath": "inputs/base.png"},
     }
     workflow_json = {"workflow": {"nodes": []}, "prompt": {"1": {"class_type": "KSampler"}}}
 
@@ -154,6 +156,8 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
     assert imh["generator"] == "ComfyUI"
     assert imh["workflow"] == workflow_json["workflow"]
     assert imh["prompt_api"] == workflow_json["prompt"]
+    assert imh["generation_type"] == "img2img"
+    assert imh["source_image"]["fileName"] == "base.png"
 
 
 def test_build_imh_metadata_sanitizes_nan():

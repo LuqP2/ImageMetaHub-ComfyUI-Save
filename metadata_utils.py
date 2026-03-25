@@ -396,6 +396,8 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
         "model_hash": params['model_hash'],
         "vae": params.get('vae_name', ''),
         "denoise": params.get('denoise', 1.0),
+        "generation_type": params.get('generation_type'),
+        "source_image": _sanitize(params.get('source_image')),
         "width": params['width'],
         "height": params['height'],
 

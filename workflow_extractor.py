@@ -54,6 +54,11 @@ class WorkflowExtractor:
         "VAEDecode (Tiled)",
     ]
 
+    LOAD_IMAGE_NODES = [
+        "LoadImage",
+        "LoadImageMask",
+    ]
+
     def __init__(self, prompt: Optional[Dict[str, Any]]):
         self.prompt: Dict[str, Any] = {}
         if isinstance(prompt, dict):
@@ -115,6 +120,10 @@ class WorkflowExtractor:
             data["lora_list"] = lora_list
         elif has_lora_nodes:
             missing.add("loras")
+
+        lineage = self.extract_lineage(sampler_node_id)
+        if lineage:
+            data.update(lineage)
 
         return data, missing
 
@@ -235,6 +244,73 @@ class WorkflowExtractor:
             loras.append({"name": lora_name, "weight": float(weight)})
 
         return loras, has_lora_nodes
+
+    def extract_lineage(self, sampler_node_id: Optional[str]) -> Dict[str, Any]:
+        if not sampler_node_id:
+            return {}
+
+        node = self._get_node(sampler_node_id)
+        if not node:
+            return {}
+
+        inputs = node.get("inputs", {})
+        latent_conn = inputs.get("latent_image") or inputs.get("latent") or inputs.get("samples")
+        start_node_id = self._get_connection_node_id(latent_conn)
+        if not start_node_id:
+            return {}
+
+        queue = [start_node_id]
+        visited: Set[str] = set()
+        source_image: Optional[Dict[str, Any]] = None
+        has_load_image = False
+        has_inpaint = False
+        has_outpaint = False
+
+        while queue:
+            current_id = queue.pop(0)
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+
+            current = self._get_node(current_id)
+            if not current:
+                continue
+
+            class_type = self._class_type(current)
+            class_lower = class_type.lower()
+
+            if class_type in self.LOAD_IMAGE_NODES or class_lower in {"loadimage", "loadimagemask"}:
+                has_load_image = True
+                if not source_image:
+                    image_value = current.get("inputs", {}).get("image")
+                    if isinstance(image_value, str) and image_value.strip():
+                        normalized = image_value.replace("\\", "/")
+                        source_image = {
+                            "fileName": normalized.split("/")[-1],
+                            "relativePath": normalized,
+                            "nodeId": current_id,
+                            "nodeType": class_type,
+                        }
+
+            if "outpaint" in class_lower or class_lower in {"padforoutpaint", "imagepadforoutpaint"}:
+                has_outpaint = True
+
+            if "inpaint" in class_lower or class_lower == "setlatentnoisemask" or "mask" in class_lower:
+                has_inpaint = True
+
+            for input_value in current.get("inputs", {}).values():
+                upstream_id = self._get_connection_node_id(input_value)
+                if upstream_id and upstream_id not in visited:
+                    queue.append(upstream_id)
+
+        if not has_load_image:
+            return {}
+
+        generation_type = "outpaint" if has_outpaint else "inpaint" if has_inpaint else "img2img"
+        return {
+            "generation_type": generation_type,
+            "source_image": source_image,
+        }
 
     def _find_sampler_from_images_source(self, start_node_id: str) -> Optional[str]:
         start_node = self._get_node(start_node_id)
