@@ -198,6 +198,9 @@ class MetaHubSaveNode:
             prompt_data = prompt if isinstance(prompt, dict) else workflow_json.get("prompt", {})
             if not isinstance(prompt_data, dict):
                 prompt_data = {}
+            parent_image = None
+            if isinstance(extra_pnginfo, dict):
+                parent_image = extra_pnginfo.get("parent_image")
 
             workflow_json = utils.ensure_prompt_in_workflow(workflow_json, prompt_data)
             save_node_id = str(unique_id) if unique_id is not None else None
@@ -309,6 +312,7 @@ class MetaHubSaveNode:
                 "project_name": project_name,
                 "lora_list": lora_list,
                 "lora_hashes": lora_hashes,
+                "parent_image": parent_image,
                 "generation_type": extracted.get("generation_type"),
                 "source_image": extracted.get("source_image"),
                 # Performance metrics (Tier 1, 2, 3)
