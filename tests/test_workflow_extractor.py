@@ -70,6 +70,71 @@ def test_workflow_extractor_lora_detection():
     assert data["lora_list"] == [{"name": "detail.safetensors", "weight": 0.8}]
 
 
+def test_workflow_extractor_detects_flux_unet_model_and_vae():
+    prompt = {
+        "1": {
+            "class_type": "UNETLoader",
+            "inputs": {"unet_name": "flux-model.safetensors"},
+        },
+        "2": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "flux-vae.safetensors"},
+        },
+        "3": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "positive", "clip": ["9", 0]},
+        },
+        "4": {
+            "class_type": "BasicScheduler",
+            "inputs": {"model": ["1", 0], "steps": 8, "scheduler": "normal"},
+        },
+        "5": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 123,
+                "steps": 8,
+                "cfg": 1,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+                "model": ["1", 0],
+                "positive": ["3", 0],
+                "negative": ["3", 0],
+                "latent_image": ["8", 0],
+            },
+        },
+        "6": {
+            "class_type": "VAEDecode",
+            "inputs": {"samples": ["5", 0], "vae": ["2", 0]},
+        },
+        "7": {
+            "class_type": "MetaHubSaveNode",
+            "inputs": {"images": ["6", 0]},
+        },
+        "8": {"class_type": "EmptyLatentImage", "inputs": {}},
+        "9": {"class_type": "CLIPLoader", "inputs": {}},
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, _missing = extractor.extract(save_node_id="7")
+
+    assert data["model_name"] == "flux-model.safetensors"
+    assert data["vae_name"] == "flux-vae.safetensors"
+
+
+def test_workflow_extractor_detects_lora_alternate_keys():
+    prompt = {
+        "1": {
+            "class_type": "PowerLoraLoader",
+            "inputs": {"lora_name_1": "style.safetensors", "strength": 0.65},
+        }
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, _missing = extractor.extract()
+
+    assert data["lora_list"] == [{"name": "style.safetensors", "weight": 0.65}]
+
+
 
 def test_workflow_extractor_detects_img2img_lineage():
     prompt = {

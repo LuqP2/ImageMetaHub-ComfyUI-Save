@@ -129,6 +129,10 @@ All overrides use `forceInput: True` (hidden from UI, connection-only).
 ### Filename Pattern
 Use `filename_pattern` to customize names (default `ComfyUI_%counter%`). Invalid filename characters are sanitized and missing values become `unknown`. `filename_prefix` is deprecated but still supported.
 
+`filename_pattern` can include subfolders. Each path segment is sanitized separately, so `project/%date:yyyyMMdd%/image_%time%` creates a dated folder under the selected output directory. Unsafe segments such as `..`, drive letters, absolute paths, empty path segments, and Windows reserved names are blocked.
+
+`output_path` controls the base directory. Leave it empty for ComfyUI's default output folder. Relative paths are created under the ComfyUI output folder; absolute paths are used as-is.
+
 | Placeholder | Description | Example |
 | --- | --- | --- |
 | `%counter%` | Auto-increment (00001, 00002...) | 00042 |
@@ -136,6 +140,8 @@ Use `filename_pattern` to customize names (default `ComfyUI_%counter%`). Invalid
 | `%date%` | Date YYYY-MM-DD | 2025-01-15 |
 | `%time%` | Time HH-MM-SS | 14-30-22 |
 | `%datetime%` | Date + time | 2025-01-15_14-30-22 |
+| `%date:yyyyMMdd%` | Custom date format | 20250115 |
+| `%time:HHmmss%` | Custom time format | 143022 |
 | `%model%` | Model name (no extension) | dreamshaper_v8 |
 | `%sampler%` | Sampler name | euler_ancestral |
 | `%steps%` | Steps | 20 |
@@ -151,6 +157,8 @@ Use `filename_pattern` to customize names (default `ComfyUI_%counter%`). Invalid
 - JPEG/WebP use EXIF UserComment (A1111) and ImageDescription (IMH JSON)
 
 If structured metadata cannot be written, the image is still saved.
+
+If no output file can be written, the node now raises a visible ComfyUI error. In batch saves, successful files still appear in the preview and failed files are listed in the console.
 
 ### Multi-Sampler Heuristic
 When multiple samplers exist, the node prefers the sampler that feeds the latent used by the VAEDecode connected to the saved images; it falls back to the first sampler found.
@@ -206,6 +214,8 @@ export COMFYUI_CHECKPOINT_PATH="/path/to/checkpoints"
 export COMFYUI_LORA_PATH="/path/to/loras"
 export COMFYUI_VAE_PATH="/path/to/vae"
 ```
+
+Checkpoint hashes are searched in both `models/checkpoints` and `models/diffusion_models` by default, matching newer Flux-style ComfyUI layouts.
 
 ## Metadata Formats
 

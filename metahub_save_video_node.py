@@ -240,6 +240,32 @@ class MetaHubSaveVideoNode:
         negative_value = resolve_value(negative, extracted.get("negative"), "")
         denoise_value = normalize_float(resolve_value(denoise, extracted.get("denoise"), 1.0), 1.0)
         vae_name_value = resolve_value(vae_name, extracted.get("vae_name"), "")
+        metadata_fields = [
+            "seed",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "model_name",
+            "positive",
+            "negative",
+            "denoise",
+            "vae_name",
+        ]
+        manual_inputs = {
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+            "model_name": model_name,
+            "positive": positive,
+            "negative": negative,
+            "denoise": denoise,
+            "vae_name": vae_name,
+        }
+        metadata_sources = utils.build_metadata_sources(manual_inputs, extracted, metadata_fields)
+        metadata_status = utils.build_metadata_status(metadata_sources)
 
         # Calculate model hash
         if model_name_value:
@@ -292,6 +318,8 @@ class MetaHubSaveVideoNode:
                     gpu_metrics=gpu_metrics,
                     version_info=version_info,
                     workflow_json=workflow_json,
+                    metadata_sources=metadata_sources,
+                    metadata_status=metadata_status,
                 )
             except Exception as e:
                 print(f"[MetaHub Video] Warning: Failed to add metadata to {video_path.name}: {e}")
@@ -325,6 +353,8 @@ class MetaHubSaveVideoNode:
         gpu_metrics: Dict[str, Any],
         version_info: Dict[str, str],
         workflow_json: Dict,
+        metadata_sources: Dict[str, str],
+        metadata_status: str,
     ) -> None:
         """
         Processes a single video file and injects metadata.
@@ -383,6 +413,8 @@ class MetaHubSaveVideoNode:
             "comfyui_version": version_info.get("comfyui_version"),
             "torch_version": version_info.get("torch_version"),
             "python_version": version_info.get("python_version"),
+            "metadata_sources": metadata_sources,
+            "metadata_status": metadata_status,
         }
 
         # Build metadata
