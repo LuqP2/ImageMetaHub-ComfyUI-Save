@@ -209,7 +209,7 @@ def build_video_metahub_metadata(params: dict, workflow_json: dict) -> dict:
     sources = params.get("metadata_sources") if isinstance(params.get("metadata_sources"), dict) else {}
 
     def canonical(field: str, param_key: str, fallback: Any = None) -> Any:
-        if sources.get(field) == "default":
+        if sources.get(field) in {"default", "unknown"}:
             return None
         return params.get(param_key, fallback)
 

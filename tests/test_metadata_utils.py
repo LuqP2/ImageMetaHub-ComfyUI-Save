@@ -11,6 +11,7 @@ from metadata_utils import (
     build_metadata_status,
     ensure_metahub_save_node,
     ensure_prompt_in_workflow,
+    find_model_file,
     get_next_filename,
     get_output_directory,
     get_workflow_json,
@@ -58,6 +59,20 @@ def test_output_path_relative_resolves_under_comfy_output(tmp_path, monkeypatch)
     assert output.exists()
 
 
+def test_output_path_allows_trailing_separator(tmp_path, monkeypatch):
+    class FakeFolderPaths:
+        @staticmethod
+        def get_output_directory():
+            return str(tmp_path / "output")
+
+    monkeypatch.setitem(sys.modules, "folder_paths", FakeFolderPaths)
+
+    output = get_output_directory("project/")
+
+    assert output == tmp_path / "output" / "project"
+    assert output.exists()
+
+
 def test_filename_pattern_supports_subfolders_and_tokens():
     params = {"seed": 123, "model_name": "model.safetensors"}
 
@@ -96,6 +111,27 @@ def test_metadata_status_marks_defaulted_fields_as_partial():
     assert sources["positive"] == "detected"
     assert sources["model_name"] == "default"
     assert build_metadata_status(sources, ["positive", "model_name", "seed"]) == "partial"
+
+
+def test_blank_string_override_is_unknown_not_detected():
+    sources = build_metadata_sources(
+        {"positive": ""},
+        {"positive": "extracted prompt"},
+        ["positive"],
+    )
+
+    assert sources["positive"] == "unknown"
+    assert build_metadata_status(sources, ["positive"]) == "fallback"
+
+
+def test_find_model_file_tries_safetensors_for_dotted_extensionless_names(tmp_path, monkeypatch):
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    model_path = model_dir / "dreamshaper.v8.safetensors"
+    model_path.write_bytes(b"model")
+    monkeypatch.setenv("COMFYUI_CHECKPOINT_PATH", str(model_dir))
+
+    assert find_model_file("dreamshaper.v8", "checkpoint") == model_path
 
 
 def test_ensure_prompt_in_workflow_adds_prompt():

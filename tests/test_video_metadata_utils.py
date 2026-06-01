@@ -44,3 +44,19 @@ def test_video_metadata_nulls_defaulted_canonical_fields():
     assert payload["prompt"] is None
     assert payload["model"] is None
     assert payload["seed"] is None
+
+
+def test_video_metadata_nulls_unknown_blank_overrides():
+    payload = build_video_metahub_metadata(
+        {
+            "positive": "",
+            "width": 640,
+            "height": 480,
+            "metadata_sources": {
+                "positive": "unknown",
+            },
+        },
+        {},
+    )
+
+    assert payload["prompt"] is None

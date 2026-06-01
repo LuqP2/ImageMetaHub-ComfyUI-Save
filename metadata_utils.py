@@ -98,7 +98,9 @@ def find_model_file(model_name: str, model_type: str) -> Optional[Path]:
         Path to model file or None if not found
     """
     candidate_names = [model_name]
-    if "." not in Path(model_name).name:
+    known_model_suffixes = {".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf"}
+    suffix = Path(model_name).suffix.lower()
+    if suffix not in known_model_suffixes:
         candidate_names.append(f"{model_name}.safetensors")
 
     # Get search paths
@@ -460,8 +462,11 @@ def build_metadata_sources(manual_inputs: dict, extracted: dict, fields: List[st
     for field in fields:
         manual_value = manual_inputs.get(field)
         extracted_value = extracted.get(field)
-        if manual_value is not None and not (isinstance(manual_value, str) and not manual_value.strip()):
-            sources[field] = "manual_override"
+        if manual_value is not None:
+            if isinstance(manual_value, str) and not manual_value.strip():
+                sources[field] = "unknown"
+            else:
+                sources[field] = "manual_override"
         elif extracted_value is not None and not (isinstance(extracted_value, str) and not extracted_value.strip()):
             sources[field] = "detected"
         else:
@@ -1000,6 +1005,7 @@ def _sanitize_relative_segments(path_text: str) -> Path:
     normalized = path_text.replace("\\", "/")
     if _has_drive_or_root(normalized):
         raise ValueError(f"Absolute paths are not allowed here: {path_text!r}")
+    normalized = normalized.rstrip("/")
     raw_segments = normalized.split("/")
     if any(segment == "" for segment in raw_segments):
         raise ValueError(f"Empty path segments are not allowed: {path_text!r}")
