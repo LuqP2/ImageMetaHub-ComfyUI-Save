@@ -1,14 +1,21 @@
 import json
 import math
+import sys
 from pathlib import Path
 import copy
 
 from metadata_utils import (
     build_a1111_metadata,
     build_imh_metadata,
+    build_metadata_sources,
+    build_metadata_status,
     ensure_metahub_save_node,
     ensure_prompt_in_workflow,
+    find_model_file,
+    get_next_filename,
+    get_output_directory,
     get_workflow_json,
+    resolve_filename_pattern_path,
     save_png_with_metadata,
 )
 from PIL import Image
@@ -35,6 +42,96 @@ def _read_png_text_chunks(path: Path) -> dict:
 def _save_simple_png(path: Path) -> None:
     image = Image.new("RGB", (2, 2), color=(0, 0, 0))
     image.save(path, "PNG")
+
+
+def test_output_path_relative_resolves_under_comfy_output(tmp_path, monkeypatch):
+    class FakeFolderPaths:
+        @staticmethod
+        def get_output_directory():
+            return str(tmp_path / "output")
+
+    monkeypatch.setitem(sys.modules, "folder_paths", FakeFolderPaths)
+
+    output = get_output_directory("project/%date:yyyyMMdd%")
+
+    assert output.parent.name == "project"
+    assert output.parent.parent == tmp_path / "output"
+    assert output.exists()
+
+
+def test_output_path_allows_trailing_separator(tmp_path, monkeypatch):
+    class FakeFolderPaths:
+        @staticmethod
+        def get_output_directory():
+            return str(tmp_path / "output")
+
+    monkeypatch.setitem(sys.modules, "folder_paths", FakeFolderPaths)
+
+    output = get_output_directory("project/")
+
+    assert output == tmp_path / "output" / "project"
+    assert output.exists()
+
+
+def test_filename_pattern_supports_subfolders_and_tokens():
+    params = {"seed": 123, "model_name": "model.safetensors"}
+
+    relative = resolve_filename_pattern_path("%date:yyyyMMdd%/image_%seed%", params, 1, "PNG")
+
+    assert len(relative.parts) == 2
+    assert relative.parts[1] == "image_123.png"
+
+
+def test_filename_pattern_rejects_unsafe_segments():
+    try:
+        resolve_filename_pattern_path("../escape", {}, 1, "PNG")
+    except ValueError as error:
+        assert "Unsafe path segment" in str(error)
+    else:
+        raise AssertionError("Expected unsafe pattern to fail")
+
+
+def test_get_next_filename_creates_nested_collision_path(tmp_path):
+    existing = tmp_path / "set" / "image.png"
+    existing.parent.mkdir()
+    existing.write_bytes(b"exists")
+
+    path = get_next_filename(tmp_path, "set/image", {}, "PNG")
+
+    assert path == tmp_path / "set" / "image_00002.png"
+
+
+def test_metadata_status_marks_defaulted_fields_as_partial():
+    sources = build_metadata_sources(
+        {"positive": None, "model_name": None, "seed": None},
+        {"positive": "prompt"},
+        ["positive", "model_name", "seed"],
+    )
+
+    assert sources["positive"] == "detected"
+    assert sources["model_name"] == "default"
+    assert build_metadata_status(sources, ["positive", "model_name", "seed"]) == "partial"
+
+
+def test_blank_string_override_is_unknown_not_detected():
+    sources = build_metadata_sources(
+        {"positive": ""},
+        {"positive": "extracted prompt"},
+        ["positive"],
+    )
+
+    assert sources["positive"] == "unknown"
+    assert build_metadata_status(sources, ["positive"]) == "fallback"
+
+
+def test_find_model_file_tries_safetensors_for_dotted_extensionless_names(tmp_path, monkeypatch):
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    model_path = model_dir / "dreamshaper.v8.safetensors"
+    model_path.write_bytes(b"model")
+    monkeypatch.setenv("COMFYUI_CHECKPOINT_PATH", str(model_dir))
+
+    assert find_model_file("dreamshaper.v8", "checkpoint") == model_path
 
 
 def test_ensure_prompt_in_workflow_adds_prompt():
@@ -149,6 +246,8 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
         "generation_type": "img2img",
         "parent_image": {"fileName": "selected.png", "relativePath": "library/selected.png"},
         "source_image": {"fileName": "base.png", "relativePath": "inputs/base.png"},
+        "metadata_status": "partial",
+        "metadata_sources": {"model_name": "default"},
     }
     workflow_json = {"workflow": {"nodes": []}, "prompt": {"1": {"class_type": "KSampler"}}}
 
@@ -160,6 +259,8 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
     assert imh["generation_type"] == "img2img"
     assert imh["parent_image"]["fileName"] == "selected.png"
     assert imh["source_image"]["fileName"] == "base.png"
+    assert imh["metadata_status"] == "partial"
+    assert imh["metadata_sources"] == {"model_name": "default"}
 
 
 def test_build_imh_metadata_sanitizes_nan():

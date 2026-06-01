@@ -24,6 +24,8 @@ class WorkflowExtractor:
         "CheckpointLoader",
         "UNETLoader",
         "UnetLoaderGGUF",
+        "DualDiffusionLoader",
+        "DiffusionModelLoader",
     ]
 
     VAE_NODES = [
@@ -228,7 +230,7 @@ class WorkflowExtractor:
                 continue
             has_lora_nodes = True
             inputs = node.get("inputs", {})
-            lora_name = self._get_first_literal(inputs, ("lora_name", "lora"))
+            lora_name = self._get_first_literal(inputs, ("lora_name", "lora", "lora_name_1", "lora_1"))
             if not lora_name:
                 continue
             strength_model = self._get_first_literal(
@@ -407,7 +409,7 @@ class WorkflowExtractor:
 
     def _get_checkpoint_name(self, node: Dict[str, Any]) -> Optional[str]:
         inputs = node.get("inputs", {})
-        for key in ("ckpt_name", "checkpoint", "model_name", "unet_name"):
+        for key in ("ckpt_name", "checkpoint", "model_name", "unet_name", "diffusion_model_name", "model"):
             value = self._get_literal_input(inputs, key)
             if value:
                 return str(value)

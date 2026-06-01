@@ -199,9 +199,6 @@ def build_video_metahub_metadata(params: dict, workflow_json: dict) -> dict:
             return [_sanitize(v) for v in value]
         return value
 
-    safe_workflow = _sanitize(workflow_json.get('workflow', {}))
-    safe_prompt = _sanitize(workflow_json.get('prompt', {}))
-
     # Calculate duration if we have frame count and rate
     duration_seconds = None
     frame_count = params.get('frame_count')
@@ -209,23 +206,32 @@ def build_video_metahub_metadata(params: dict, workflow_json: dict) -> dict:
     if frame_count and frame_rate and frame_rate > 0:
         duration_seconds = round(frame_count / frame_rate, 2)
 
+    sources = params.get("metadata_sources") if isinstance(params.get("metadata_sources"), dict) else {}
+
+    def canonical(field: str, param_key: str, fallback: Any = None) -> Any:
+        if sources.get(field) in {"default", "unknown"}:
+            return None
+        return params.get(param_key, fallback)
+
     return {
         # CRITICAL: Required field for detection
         "generator": "ComfyUI",
         "media_type": "video",
+        "metadata_status": params.get("metadata_status", "partial"),
+        "metadata_sources": _sanitize(params.get("metadata_sources", {})),
 
         # Main generation fields
-        "prompt": params.get('positive', ''),
-        "negativePrompt": params.get('negative', ''),
-        "seed": params.get('seed', 0),
-        "steps": params.get('steps', 20),
-        "cfg": params.get('cfg', 7.0),
-        "sampler_name": params.get('sampler', 'euler'),
-        "scheduler": params.get('scheduler', 'normal'),
-        "model": params.get('model_name', ''),
+        "prompt": canonical("positive", "positive"),
+        "negativePrompt": canonical("negative", "negative"),
+        "seed": canonical("seed", "seed"),
+        "steps": canonical("steps", "steps"),
+        "cfg": canonical("cfg", "cfg"),
+        "sampler_name": canonical("sampler_name", "sampler"),
+        "scheduler": canonical("scheduler", "scheduler"),
+        "model": canonical("model_name", "model_name"),
         "model_hash": params.get('model_hash', ''),
-        "vae": params.get('vae_name', ''),
-        "denoise": params.get('denoise', 1.0),
+        "vae": canonical("vae_name", "vae_name"),
+        "denoise": canonical("denoise", "denoise"),
         "width": params.get('width', 512),
         "height": params.get('height', 512),
 
@@ -270,9 +276,7 @@ def build_video_metahub_metadata(params: dict, workflow_json: dict) -> dict:
             "python_version": params.get('python_version'),
         },
 
-        # Complete workflow data
-        "workflow": safe_workflow,
-        "prompt_api": safe_prompt,
+        # Full workflow JSON intentionally omitted for video containers.
     }
 
 

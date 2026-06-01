@@ -6,6 +6,7 @@ Handles hash calculation, metadata formatting, and metadata injection.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -56,19 +57,27 @@ def get_model_search_paths(model_type: str) -> List[str]:
         import folder_paths
         type_map = {
             "checkpoint": "checkpoints",
+            "diffusion_model": "diffusion_models",
             "lora": "loras",
             "vae": "vae"
         }
-        if model_type in type_map:
-            comfy_paths = folder_paths.get_folder_paths(type_map[model_type])
-            paths.extend(comfy_paths)
+        comfy_types = [type_map[model_type]] if model_type in type_map else []
+        if model_type == "checkpoint":
+            comfy_types.append("diffusion_models")
+        for comfy_type in comfy_types:
+            try:
+                comfy_paths = folder_paths.get_folder_paths(comfy_type)
+                paths.extend(comfy_paths)
+            except Exception:
+                pass
     except (ImportError, Exception):
         pass
 
     # Add default relative paths if no paths found
     if not paths:
         default_paths = {
-            "checkpoint": ["models/checkpoints"],
+            "checkpoint": ["models/checkpoints", "models/diffusion_models"],
+            "diffusion_model": ["models/diffusion_models"],
             "lora": ["models/loras"],
             "vae": ["models/vae"],
         }
@@ -88,18 +97,21 @@ def find_model_file(model_name: str, model_type: str) -> Optional[Path]:
     Returns:
         Path to model file or None if not found
     """
-    # Ensure .safetensors extension
-    if not model_name.endswith('.safetensors'):
-        model_name += '.safetensors'
+    candidate_names = [model_name]
+    known_model_suffixes = {".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf"}
+    suffix = Path(model_name).suffix.lower()
+    if suffix not in known_model_suffixes:
+        candidate_names.append(f"{model_name}.safetensors")
 
     # Get search paths
     search_paths = get_model_search_paths(model_type)
 
     # Search for file
     for base_path in search_paths:
-        potential_path = Path(base_path) / model_name
-        if potential_path.exists():
-            return potential_path
+        for candidate_name in candidate_names:
+            potential_path = Path(base_path) / candidate_name
+            if potential_path.exists():
+                return potential_path
 
     return None
 
@@ -383,6 +395,8 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
     return {
         # CRITICAL: Required field for IMH detection
         "generator": "ComfyUI",
+        "metadata_status": params.get("metadata_status", "partial"),
+        "metadata_sources": _sanitize(params.get("metadata_sources", {})),
 
         # Main fields (compatible with comfyUIParser.ts)
         "prompt": params['positive'],
@@ -441,6 +455,33 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
         "workflow": safe_workflow,
         "prompt_api": safe_prompt,
     }
+
+
+def build_metadata_sources(manual_inputs: dict, extracted: dict, fields: List[str]) -> Dict[str, str]:
+    sources: Dict[str, str] = {}
+    for field in fields:
+        manual_value = manual_inputs.get(field)
+        extracted_value = extracted.get(field)
+        if manual_value is not None:
+            if isinstance(manual_value, str) and not manual_value.strip():
+                sources[field] = "unknown"
+            else:
+                sources[field] = "manual_override"
+        elif extracted_value is not None and not (isinstance(extracted_value, str) and not extracted_value.strip()):
+            sources[field] = "detected"
+        else:
+            sources[field] = "default"
+    return sources
+
+
+def build_metadata_status(sources: Dict[str, str], important_fields: Optional[List[str]] = None) -> str:
+    important = important_fields or ["positive", "model_name", "seed", "steps", "sampler_name"]
+    relevant = [sources.get(field, "unknown") for field in important]
+    if relevant and all(source in {"detected", "manual_override"} for source in relevant):
+        return "complete"
+    if any(source in {"detected", "manual_override"} for source in sources.values()):
+        return "partial"
+    return "fallback"
 
 
 def _serialize_metadata_json(value: Any) -> Optional[str]:
@@ -828,6 +869,12 @@ def save_webp_with_metadata(
 
 _INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 _KNOWN_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+}
+_TOKEN_RE = re.compile(r"%(date|time|datetime)(?::([^%]+))?%")
 
 
 def _normalize_file_format(file_format: str) -> str:
@@ -866,12 +913,54 @@ def sanitize_filename(name: str) -> str:
     return cleaned or "unknown"
 
 
+def sanitize_path_segment(name: str) -> str:
+    cleaned = sanitize_filename(name)
+    if cleaned in {".", ".."}:
+        raise ValueError(f"Unsafe path segment: {name!r}")
+    if cleaned.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}"
+    return cleaned
+
+
 def _format_placeholder_value(value: Any) -> str:
     if value is None:
         return "unknown"
     if isinstance(value, str) and not value.strip():
         return "unknown"
     return str(value)
+
+
+def _translate_datetime_format(fmt: str) -> str:
+    translated = fmt
+    replacements = (
+        ("yyyy", "%Y"),
+        ("yy", "%y"),
+        ("MM", "%m"),
+        ("dd", "%d"),
+        ("HH", "%H"),
+        ("mm", "%M"),
+        ("ss", "%S"),
+    )
+    for source, target in replacements:
+        translated = translated.replace(source, target)
+    return translated
+
+
+def resolve_time_tokens(value: str, now: Optional[datetime] = None) -> str:
+    now = now or datetime.now()
+
+    def replace(match: re.Match) -> str:
+        token = match.group(1)
+        fmt = match.group(2)
+        if fmt:
+            return now.strftime(_translate_datetime_format(fmt))
+        if token == "date":
+            return now.strftime("%Y-%m-%d")
+        if token == "time":
+            return now.strftime("%H-%M-%S")
+        return now.strftime("%Y-%m-%d_%H-%M-%S")
+
+    return _TOKEN_RE.sub(replace, value or "")
 
 
 def resolve_placeholders(pattern: str, params: dict, counter: int) -> str:
@@ -893,10 +982,39 @@ def resolve_placeholders(pattern: str, params: dict, counter: int) -> str:
         "%height%": _format_placeholder_value(params.get("height")),
     }
 
-    resolved = pattern or "ComfyUI_%counter%"
+    resolved = resolve_time_tokens(pattern or "ComfyUI_%counter%", now)
     for placeholder, value in replacements.items():
         resolved = resolved.replace(placeholder, value)
     return resolved
+
+
+def _get_default_output_directory() -> Path:
+    try:
+        import folder_paths
+        return Path(folder_paths.get_output_directory())
+    except ImportError:
+        return Path("output")
+
+
+def _has_drive_or_root(path_text: str) -> bool:
+    normalized = path_text.replace("\\", "/")
+    return bool(re.match(r"^[A-Za-z]:", normalized)) or normalized.startswith("/")
+
+
+def _sanitize_relative_segments(path_text: str) -> Path:
+    normalized = path_text.replace("\\", "/")
+    if _has_drive_or_root(normalized):
+        raise ValueError(f"Absolute paths are not allowed here: {path_text!r}")
+    normalized = normalized.rstrip("/")
+    raw_segments = normalized.split("/")
+    if any(segment == "" for segment in raw_segments):
+        raise ValueError(f"Empty path segments are not allowed: {path_text!r}")
+    safe_segments = []
+    for segment in raw_segments:
+        if segment in {".", ".."}:
+            raise ValueError(f"Unsafe path segment: {segment!r}")
+        safe_segments.append(sanitize_path_segment(segment))
+    return Path(*safe_segments) if safe_segments else Path()
 
 
 def get_output_directory(output_path: str) -> Path:
@@ -911,15 +1029,16 @@ def get_output_directory(output_path: str) -> Path:
         Path object for output directory (created if doesn't exist)
     """
     if output_path and output_path.strip():
-        output_dir = Path(output_path)
+        resolved_output = resolve_time_tokens(str(output_path).strip())
+        candidate = Path(resolved_output)
+        if candidate.is_absolute():
+            output_dir = candidate
+        elif _has_drive_or_root(resolved_output):
+            raise RuntimeError(f"Output path must be absolute or relative, not drive-relative: {output_path!r}")
+        else:
+            output_dir = _get_default_output_directory() / _sanitize_relative_segments(resolved_output)
     else:
-        # Use ComfyUI's default output directory
-        try:
-            import folder_paths
-            output_dir = Path(folder_paths.get_output_directory())
-        except ImportError:
-            # Fallback if not in ComfyUI environment
-            output_dir = Path("output")
+        output_dir = _get_default_output_directory()
 
     # Create directory if it doesn't exist (mkdir -p)
     try:
@@ -929,6 +1048,18 @@ def get_output_directory(output_path: str) -> Path:
         raise RuntimeError(f"Cannot create output directory '{output_dir}': {e}")
 
     return output_dir
+
+
+def resolve_filename_pattern_path(filename_pattern: str, params: dict, counter: int, file_format: str) -> Path:
+    resolved = resolve_placeholders(filename_pattern, params, counter)
+    if _has_drive_or_root(resolved):
+        raise ValueError(f"Filename pattern cannot contain an absolute path: {filename_pattern!r}")
+    relative = _sanitize_relative_segments(resolved)
+    if not relative.parts:
+        relative = Path("unknown")
+    parent = relative.parent
+    filename = sanitize_path_segment(_strip_known_extension(relative.name)) + _get_extension(file_format)
+    return parent / filename
 
 
 def get_next_filename(output_dir: Path, filename_pattern: str, params: dict, file_format: str) -> Path:
@@ -949,13 +1080,11 @@ def get_next_filename(output_dir: Path, filename_pattern: str, params: dict, fil
     """
     counter = 1
     uses_counter = "%counter%" in (filename_pattern or "")
-    extension = _get_extension(file_format)
     while True:
-        resolved = resolve_placeholders(filename_pattern, params, counter)
+        candidate_pattern = filename_pattern
         if not uses_counter and counter > 1:
-            resolved = f"{resolved}_{counter:05d}"
-        filename = sanitize_filename(_strip_known_extension(resolved)) + extension
-        full_path = output_dir / filename
+            candidate_pattern = f"{filename_pattern}_{counter:05d}"
+        full_path = output_dir / resolve_filename_pattern_path(candidate_pattern, params, counter, file_format)
         if not full_path.exists():
             return full_path
         counter += 1
@@ -1043,9 +1172,10 @@ def save_image_batch(
         imh_metadata: IMH metadata dict
 
     Returns:
-        List of saved file paths
+        List of saved file paths. Raises if none were saved.
     """
     saved_paths = []
+    failures: List[Tuple[Path, str]] = []
 
     for image_tensor in images:
         # Convert to PIL
@@ -1053,10 +1183,13 @@ def save_image_batch(
 
         # Get next filename
         file_path = get_next_filename(output_dir, filename_pattern, params, file_format)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Save image with metadata
         try:
             save_image_with_metadata(pil_image, file_path, file_format, quality, a1111_metadata, imh_metadata or {})
+            if not file_path.exists() or file_path.stat().st_size <= 0:
+                raise RuntimeError("save completed but output file is missing or empty")
             saved_paths.append(file_path)
         except Exception as e:
             print(f"[MetaHub] Warning: Could not save image {file_path}: {e}")
@@ -1070,9 +1203,24 @@ def save_image_batch(
                     pil_image.save(file_path, "WEBP", quality=quality)
                 else:
                     pil_image.save(file_path, "PNG", compress_level=4)
+                if not file_path.exists() or file_path.stat().st_size <= 0:
+                    raise RuntimeError("fallback save completed but output file is missing or empty")
                 saved_paths.append(file_path)
             except Exception as save_error:
                 print(f"[MetaHub] Warning: Fallback save failed for {file_path}: {save_error}")
+                failures.append((file_path, str(save_error)))
+
+    if not saved_paths:
+        details = "; ".join(f"{path}: {error}" for path, error in failures) or "no images were processed"
+        raise RuntimeError(f"No images were saved. {details}")
+
+    if failures:
+        print(
+            "[MetaHub] WARNING: Partial save failure - "
+            f"{len(saved_paths)} saved, {len(failures)} failed"
+        )
+        for failed_path, error in failures:
+            print(f"[MetaHub]   FAILED: {failed_path} ({error})")
 
     return saved_paths
 

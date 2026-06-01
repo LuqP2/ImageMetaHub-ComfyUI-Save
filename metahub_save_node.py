@@ -53,6 +53,19 @@ class MetaHubSaveNode:
                     "default": "",
                     "tooltip": "Custom output directory (empty = ComfyUI default)"
                 }),
+                "user_tags": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional Image MetaHub tags (comma-separated)"
+                }),
+                "notes": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "tooltip": "Optional Image MetaHub notes"
+                }),
+                "project_name": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional Image MetaHub project name"
+                }),
                 "seed": ("INT", {
                     "default": None,
                     "forceInput": True,
@@ -104,19 +117,6 @@ class MetaHubSaveNode:
                     "default": None,
                     "forceInput": True,
                     "tooltip": "Override VAE filename"
-                }),
-                "user_tags": ("STRING", {
-                    "default": "",
-                    "tooltip": "IMH Pro: User tags (comma-separated)"
-                }),
-                "notes": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "tooltip": "IMH Pro: Notes"
-                }),
-                "project_name": ("STRING", {
-                    "default": "",
-                    "tooltip": "IMH Pro: Project name"
                 }),
                 "generation_time": ("FLOAT", {
                     "default": 0.0,
@@ -241,6 +241,32 @@ class MetaHubSaveNode:
             negative_value = resolve_value(negative, extracted.get("negative"), "")
             denoise_value = normalize_float(resolve_value(denoise, extracted.get("denoise"), 1.0), 1.0)
             vae_name_value = resolve_value(vae_name, extracted.get("vae_name"), "")
+            metadata_fields = [
+                "seed",
+                "steps",
+                "cfg",
+                "sampler_name",
+                "scheduler",
+                "model_name",
+                "positive",
+                "negative",
+                "denoise",
+                "vae_name",
+            ]
+            manual_inputs = {
+                "seed": seed,
+                "steps": steps,
+                "cfg": cfg,
+                "sampler_name": sampler_name,
+                "scheduler": scheduler,
+                "model_name": model_name,
+                "positive": positive,
+                "negative": negative,
+                "denoise": denoise,
+                "vae_name": vae_name,
+            }
+            metadata_sources = utils.build_metadata_sources(manual_inputs, extracted, metadata_fields)
+            metadata_status = utils.build_metadata_status(metadata_sources)
 
             quality_value = normalize_int(quality if quality is not None else 95, 95)
             quality_value = max(1, min(100, quality_value))
@@ -323,6 +349,8 @@ class MetaHubSaveNode:
                 "comfyui_version": version_info.get("comfyui_version"),
                 "torch_version": version_info.get("torch_version"),
                 "python_version": version_info.get("python_version"),
+                "metadata_status": metadata_status,
+                "metadata_sources": metadata_sources,
             }
 
             a1111_metadata = utils.build_a1111_metadata(params)
@@ -354,16 +382,6 @@ class MetaHubSaveNode:
             label_map = {
                 "sampler_name": "sampler",
                 "model_name": "model",
-            }
-            manual_inputs = {
-                "seed": seed,
-                "steps": steps,
-                "cfg": cfg,
-                "sampler_name": sampler_name,
-                "scheduler": scheduler,
-                "model_name": model_name,
-                "positive": positive,
-                "negative": negative,
             }
             missing_warn = []
             for field in missing_fields:
@@ -409,8 +427,7 @@ class MetaHubSaveNode:
 
         except Exception as e:
             print(f"[ImageMetaHub-Save] Warning: Save failed: {e}")
-            # Return empty UI structure on error
-            return {"ui": {"images": []}}
+            raise RuntimeError(f"MetaHub Save Image failed: {e}") from e
 
 
 NODE_CLASS_MAPPINGS = {"MetaHubSaveNode": MetaHubSaveNode}
