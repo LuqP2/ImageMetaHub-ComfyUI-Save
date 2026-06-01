@@ -16,6 +16,87 @@ except ImportError:
 _HINT_SHOWN = False
 
 
+class MetaHubSaveImage:
+    """
+    Simple entry-point node. Keeps the UI focused on normal saving while
+    delegating all metadata logic to MetaHubSaveNode.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+            },
+            "optional": {
+                "filename_pattern": ("STRING", {
+                    "default": "ComfyUI_%counter%",
+                    "tooltip": "Filename pattern with placeholders"
+                }),
+                "file_format": (["PNG", "JPEG", "WebP"], {
+                    "default": "PNG",
+                    "tooltip": "File format"
+                }),
+                "output_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Custom output directory (empty = ComfyUI default)"
+                }),
+                "tags": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional Image MetaHub tags (comma-separated)"
+                }),
+                "notes": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "tooltip": "Optional Image MetaHub notes"
+                }),
+                "project_name": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional Image MetaHub project name"
+                }),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID"
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_images"
+    OUTPUT_NODE = True
+    CATEGORY = "image/save"
+    DESCRIPTION = "Save images with Image MetaHub metadata. Connect images and generate."
+
+    def save_images(
+        self,
+        images,
+        filename_pattern="ComfyUI_%counter%",
+        file_format="PNG",
+        output_path="",
+        tags="",
+        notes="",
+        project_name="",
+        prompt=None,
+        extra_pnginfo=None,
+        unique_id=None,
+    ):
+        return MetaHubSaveNode().save_images(
+            images=images,
+            filename_pattern=filename_pattern,
+            file_format=file_format,
+            output_path=output_path,
+            user_tags=tags,
+            notes=notes,
+            project_name=project_name,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+            unique_id=unique_id,
+            save_node_class_type="MetaHubSaveImage",
+            save_node_display_name="MetaHub Save Image",
+        )
+
+
 class MetaHubSaveNode:
     """
     ComfyUI custom node for saving images with comprehensive metadata.
@@ -190,6 +271,8 @@ class MetaHubSaveNode:
         prompt=None,
         extra_pnginfo=None,
         unique_id=None,
+        save_node_class_type="MetaHubSaveNode",
+        save_node_display_name="MetaHub Save Image Advanced",
     ):
         global _HINT_SHOWN
 
@@ -204,7 +287,12 @@ class MetaHubSaveNode:
 
             workflow_json = utils.ensure_prompt_in_workflow(workflow_json, prompt_data)
             save_node_id = str(unique_id) if unique_id is not None else None
-            utils.ensure_metahub_save_node(workflow_json, save_node_id)
+            utils.ensure_metahub_save_node(
+                workflow_json,
+                save_node_id,
+                class_type=save_node_class_type,
+                display_name=save_node_display_name,
+            )
 
             extractor = WorkflowExtractor(prompt_data)
             extracted, missing_fields = extractor.extract(
@@ -430,5 +518,11 @@ class MetaHubSaveNode:
             raise RuntimeError(f"MetaHub Save Image failed: {e}") from e
 
 
-NODE_CLASS_MAPPINGS = {"MetaHubSaveNode": MetaHubSaveNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"MetaHubSaveNode": "MetaHub Save Image"}
+NODE_CLASS_MAPPINGS = {
+    "MetaHubSaveImage": MetaHubSaveImage,
+    "MetaHubSaveNode": MetaHubSaveNode,
+}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "MetaHubSaveImage": "MetaHub Save Image",
+    "MetaHubSaveNode": "MetaHub Save Image Advanced",
+}

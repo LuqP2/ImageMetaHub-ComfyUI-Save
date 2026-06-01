@@ -201,6 +201,35 @@ def test_ensure_metahub_save_node_updates_workflow_node_by_id():
 
     node = workflow["workflow"]["nodes"][0]
     assert node["type"] == "MetaHubSaveNode"
+    assert node["title"] == "MetaHub Save Image Advanced"
+    assert node["properties"]["node_name"] == "MetaHub Save Image Advanced"
+
+
+def test_ensure_metahub_save_node_can_preserve_simple_node_type():
+    workflow = {
+        "prompt": {"5": {"class_type": "SaveImage", "inputs": {}}},
+        "workflow": {
+            "nodes": [
+                {
+                    "id": 5,
+                    "type": "SaveImage",
+                    "title": "Save Image",
+                    "properties": {"node_name": "Save Image"},
+                }
+            ]
+        },
+    }
+
+    ensure_metahub_save_node(
+        workflow,
+        "5",
+        class_type="MetaHubSaveImage",
+        display_name="MetaHub Save Image",
+    )
+
+    node = workflow["workflow"]["nodes"][0]
+    assert workflow["prompt"]["5"]["class_type"] == "MetaHubSaveImage"
+    assert node["type"] == "MetaHubSaveImage"
     assert node["title"] == "MetaHub Save Image"
     assert node["properties"]["node_name"] == "MetaHub Save Image"
 

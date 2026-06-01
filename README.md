@@ -79,9 +79,9 @@ Restart ComfyUI after installation.
 3. Generate! The node auto-detects and saves metadata.
 
 For most workflows, `images` is the only connection you need. The visible
-`seed`, `steps`, `cfg`, `model_name`, `positive`, `negative`, `vae_name`, and
-similar sockets are optional overrides. Leave them disconnected unless you want
-to replace the value that the node detected from the workflow.
+simple node fields are for filenames and Image MetaHub organization only. Use
+`tags`, `notes`, and `project_name` when you want the generated files to arrive
+organized in Image MetaHub.
 
 Auto-detected fields:
 - seed, steps, cfg
@@ -97,6 +97,10 @@ connect only the missing override sockets you care about, such as `positive`,
 `seed`, or `model_name`.
 
 ### Override (Optional)
+
+The full node is still available as **MetaHub Save Image Advanced**. Use it only
+when you need manual metadata overrides, benchmarking inputs, or compatibility
+with an existing workflow that already uses the older full node.
 
 **Generation Parameters:**
 Connect any override input to replace auto-detected values:
@@ -135,8 +139,8 @@ For custom benchmarking, connect these hidden inputs:
 - `generation_time_override` - Manual generation time (or from Timer node)
 
 All generation-parameter sockets are optional. They use `forceInput: True` so
-ComfyUI shows them as connection inputs, but they are not required for normal
-saving. A good default setup is:
+ComfyUI shows them as connection inputs on the Advanced node, but they are not
+required for normal saving. A good default setup is:
 
 - `VAEDecode.IMAGE` -> `MetaHub Save Image.images`
 - optional `MetaHub Timer.elapsed_time` -> `generation_time_override`

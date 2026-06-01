@@ -651,9 +651,14 @@ def ensure_prompt_in_workflow(workflow_json: dict, prompt_data: Optional[dict]) 
     return workflow_json
 
 
-def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -> None:
+def ensure_metahub_save_node(
+    workflow_json: dict,
+    save_node_id: Optional[str],
+    class_type: str = "MetaHubSaveNode",
+    display_name: str = "MetaHub Save Image Advanced",
+) -> None:
     """
-    Ensures saved workflow keeps MetaHubSaveNode instead of SaveImage.
+    Ensures saved workflow keeps the active MetaHub save node instead of SaveImage.
     """
     if not isinstance(workflow_json, dict):
         return
@@ -672,7 +677,7 @@ def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -
         if target_id and target_id in prompt:
             node = prompt.get(target_id)
             if isinstance(node, dict):
-                node["class_type"] = "MetaHubSaveNode"
+                node["class_type"] = class_type
         else:
             save_nodes = [
                 node_id
@@ -680,7 +685,7 @@ def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -
                 if isinstance(node, dict) and node.get("class_type") == "SaveImage"
             ]
             if len(save_nodes) == 1:
-                prompt[save_nodes[0]]["class_type"] = "MetaHubSaveNode"
+                prompt[save_nodes[0]]["class_type"] = class_type
 
     workflow = workflow_json.get("workflow")
     if isinstance(workflow, str):
@@ -698,14 +703,14 @@ def ensure_metahub_save_node(workflow_json: dict, save_node_id: Optional[str]) -
 
     def update_workflow_node(node: dict) -> None:
         if "type" in node:
-            node["type"] = "MetaHubSaveNode"
+            node["type"] = class_type
         if "class_type" in node:
-            node["class_type"] = "MetaHubSaveNode"
+            node["class_type"] = class_type
         if node.get("title") in ("Save Image", "SaveImage"):
-            node["title"] = "MetaHub Save Image"
+            node["title"] = display_name
         props = node.get("properties")
         if isinstance(props, dict) and props.get("node_name") in ("SaveImage", "Save Image"):
-            props["node_name"] = "MetaHub Save Image"
+            props["node_name"] = display_name
 
     if target_id:
         for node in nodes:
