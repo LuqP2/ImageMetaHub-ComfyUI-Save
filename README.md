@@ -75,8 +75,13 @@ Restart ComfyUI after installation.
 ### Quick Start
 
 1. Add "MetaHub Save Image" node to your workflow
-2. Connect the `images` output from your decoder/sampler
+2. Connect only the `images` output from your decoder/sampler
 3. Generate! The node auto-detects and saves metadata.
+
+For most workflows, `images` is the only connection you need. The visible
+`seed`, `steps`, `cfg`, `model_name`, `positive`, `negative`, `vae_name`, and
+similar sockets are optional overrides. Leave them disconnected unless you want
+to replace the value that the node detected from the workflow.
 
 Auto-detected fields:
 - seed, steps, cfg
@@ -85,6 +90,11 @@ Auto-detected fields:
 - positive/negative prompts
 - LoRAs + weights
 - VAE name
+
+If a workflow uses custom nodes that the extractor cannot understand yet, the
+image is still saved and the metadata is marked as `partial`. In that case,
+connect only the missing override sockets you care about, such as `positive`,
+`seed`, or `model_name`.
 
 ### Override (Optional)
 
@@ -124,7 +134,13 @@ For custom benchmarking, connect these hidden inputs:
 - `gpu_device_override` - Override GPU device name
 - `generation_time_override` - Manual generation time (or from Timer node)
 
-All overrides use `forceInput: True` (hidden from UI, connection-only).
+All generation-parameter sockets are optional. They use `forceInput: True` so
+ComfyUI shows them as connection inputs, but they are not required for normal
+saving. A good default setup is:
+
+- `VAEDecode.IMAGE` -> `MetaHub Save Image.images`
+- optional `MetaHub Timer.elapsed_time` -> `generation_time_override`
+- optional manual overrides only when the console says a field was not detected
 
 ### Filename Pattern
 Use `filename_pattern` to customize names (default `ComfyUI_%counter%`). Invalid filename characters are sanitized and missing values become `unknown`. `filename_prefix` is deprecated but still supported.
