@@ -153,6 +153,10 @@ class WorkflowExtractor:
         inputs = node.get("inputs", {})
 
         seed = self._coerce_int(self._get_literal_input(inputs, "seed"))
+        if seed is None:
+            seed = self._coerce_int(
+                self._resolve_scalar_from_connection(inputs.get("seed"), ("seed", "value"))
+            )
         steps = self._coerce_int(self._get_literal_input(inputs, "steps"))
         cfg = self._coerce_float(self._get_first_literal(inputs, ("cfg", "cfg_scale")))
         sampler_name = self._get_first_literal(inputs, ("sampler_name", "sampler"))
@@ -230,6 +234,10 @@ class WorkflowExtractor:
                 continue
             has_lora_nodes = True
             inputs = node.get("inputs", {})
+            stacked_loras = self._extract_lora_manager_entries(inputs)
+            if stacked_loras:
+                loras.extend(stacked_loras)
+                continue
             lora_name = self._get_first_literal(inputs, ("lora_name", "lora", "lora_name_1", "lora_1"))
             if not lora_name:
                 continue
@@ -246,6 +254,34 @@ class WorkflowExtractor:
             loras.append({"name": lora_name, "weight": float(weight)})
 
         return loras, has_lora_nodes
+
+    def _extract_lora_manager_entries(self, inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw_loras = inputs.get("loras")
+        if isinstance(raw_loras, dict) and isinstance(raw_loras.get("__value__"), list):
+            raw_loras = raw_loras["__value__"]
+        if not isinstance(raw_loras, list):
+            return []
+
+        loras: List[Dict[str, Any]] = []
+        for raw_lora in raw_loras:
+            if not isinstance(raw_lora, dict):
+                continue
+            if raw_lora.get("active") is False:
+                continue
+            name = raw_lora.get("name") or raw_lora.get("lora_name")
+            if not name:
+                continue
+            weight = self._coerce_float(
+                raw_lora.get("strength")
+                if raw_lora.get("strength") is not None
+                else raw_lora.get("modelStrength")
+            )
+            if weight is None:
+                weight = self._coerce_float(raw_lora.get("clipStrength"))
+            if weight is None:
+                weight = 1.0
+            loras.append({"name": str(name), "weight": float(weight)})
+        return loras
 
     def extract_lineage(self, sampler_node_id: Optional[str]) -> Dict[str, Any]:
         if not sampler_node_id:
@@ -379,9 +415,11 @@ class WorkflowExtractor:
             if not node:
                 continue
             class_type = self._class_type(node)
+            if class_type == "ConditioningZeroOut":
+                return ""
             if class_type in self.CLIP_NODES:
                 text = self._get_clip_text(node)
-                if text:
+                if text is not None:
                     texts.append(text)
                     continue
             for input_val in node.get("inputs", {}).values():
@@ -396,8 +434,11 @@ class WorkflowExtractor:
     def _get_clip_text(self, node: Dict[str, Any]) -> Optional[str]:
         inputs = node.get("inputs", {})
         text = self._get_literal_input(inputs, "text")
-        if text:
+        if text is not None and str(text).strip():
             return str(text)
+        text_from_conn = self._resolve_string_from_connection(inputs.get("text"))
+        if text_from_conn is not None:
+            return text_from_conn
         parts: List[str] = []
         for key in ("text_g", "text_l"):
             value = self._get_literal_input(inputs, key)
@@ -405,6 +446,96 @@ class WorkflowExtractor:
                 parts.append(str(value))
         if parts:
             return "\n".join(parts)
+        return None
+
+    def _resolve_string_from_connection(self, conn: Any) -> Optional[str]:
+        node_id = self._get_connection_node_id(conn)
+        if not node_id:
+            return None
+        return self._resolve_string_from_node(node_id, set())
+
+    def _resolve_string_from_node(self, node_id: str, visited: Set[str]) -> Optional[str]:
+        if node_id in visited:
+            return None
+        visited.add(node_id)
+
+        node = self._get_node(node_id)
+        if not node:
+            return None
+
+        inputs = node.get("inputs", {})
+        class_type = self._class_type(node)
+        class_lower = class_type.lower()
+
+        if class_type == "ConditioningZeroOut":
+            return ""
+
+        if class_type in self.CLIP_NODES:
+            return self._get_clip_text(node)
+
+        if class_lower == "joinstrings" or "join strings" in class_lower:
+            delimiter = self._get_literal_input(inputs, "delimiter")
+            joiner = str(delimiter) if delimiter is not None else " "
+            parts: List[str] = []
+            for key in ("string1", "string2", "string3", "string4"):
+                value = self._get_literal_input(inputs, key)
+                if value is None:
+                    value = self._resolve_string_from_connection_with_visited(inputs.get(key), visited)
+                if value is not None and str(value).strip():
+                    parts.append(str(value).strip())
+            return joiner.join(parts) if parts else ""
+
+        for key in ("text", "positive", "negative", "prompt", "string", "value"):
+            value = self._get_literal_input(inputs, key)
+            if value is not None and str(value).strip():
+                return str(value)
+
+        for key in ("positive", "text", "string1", "string2", "conditioning"):
+            value = self._resolve_string_from_connection_with_visited(inputs.get(key), visited)
+            if value is not None and str(value).strip():
+                return value
+
+        for input_val in inputs.values():
+            value = self._resolve_string_from_connection_with_visited(input_val, visited)
+            if value is not None and str(value).strip():
+                return value
+
+        return None
+
+    def _resolve_string_from_connection_with_visited(self, conn: Any, visited: Set[str]) -> Optional[str]:
+        node_id = self._get_connection_node_id(conn)
+        if not node_id:
+            return None
+        return self._resolve_string_from_node(node_id, visited)
+
+    def _resolve_scalar_from_connection(self, conn: Any, keys: Tuple[str, ...]) -> Any:
+        node_id = self._get_connection_node_id(conn)
+        if not node_id:
+            return None
+
+        queue = [node_id]
+        visited: Set[str] = set()
+        while queue:
+            current_id = queue.pop(0)
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+
+            node = self._get_node(current_id)
+            if not node:
+                continue
+
+            inputs = node.get("inputs", {})
+            for key in keys:
+                value = self._get_literal_input(inputs, key)
+                if value is not None:
+                    return value
+
+            for input_val in inputs.values():
+                conn_id = self._get_connection_node_id(input_val)
+                if conn_id and conn_id not in visited:
+                    queue.append(conn_id)
+
         return None
 
     def _get_checkpoint_name(self, node: Dict[str, Any]) -> Optional[str]:

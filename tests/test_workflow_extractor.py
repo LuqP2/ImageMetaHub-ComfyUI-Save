@@ -135,6 +135,98 @@ def test_workflow_extractor_detects_lora_alternate_keys():
     assert data["lora_list"] == [{"name": "style.safetensors", "weight": 0.65}]
 
 
+def test_workflow_extractor_resolves_connected_seed_and_prompt_strings():
+    prompt = {
+        "1": {
+            "class_type": "UNETLoader",
+            "inputs": {"unet_name": "zImageTurboNSFW_82BF16FP8.safetensors"},
+        },
+        "2": {
+            "class_type": "Lora Loader (LoraManager)",
+            "inputs": {
+                "text": "<lora:Z-Detail-Slider:0.95>",
+                "loras": {
+                    "__value__": [
+                        {
+                            "name": "Z-Detail-Slider",
+                            "strength": 0.75,
+                            "active": True,
+                            "clipStrength": 0.75,
+                        }
+                    ]
+                },
+                "model": ["1", 0],
+            },
+        },
+        "3": {
+            "class_type": "easy positive",
+            "inputs": {"positive": "rabbit"},
+        },
+        "4": {
+            "class_type": "JoinStrings",
+            "inputs": {"delimiter": " ", "string1": ["3", 0]},
+        },
+        "5": {
+            "class_type": "easy stylesSelector",
+            "inputs": {"styles": "fooocus_styles", "select_styles": [], "positive": ["4", 0]},
+        },
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": ["5", 0], "clip": ["2", 1]},
+        },
+        "7": {
+            "class_type": "ConditioningZeroOut",
+            "inputs": {"conditioning": ["6", 0]},
+        },
+        "8": {
+            "class_type": "SeedGenerator",
+            "inputs": {"seed": 862877771869053},
+        },
+        "9": {
+            "class_type": "ModelSamplingAuraFlow",
+            "inputs": {"shift": 3.0, "model": ["2", 0]},
+        },
+        "10": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": ["8", 0],
+                "steps": 9,
+                "cfg": 1.0,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 1.0,
+                "model": ["9", 0],
+                "positive": ["6", 0],
+                "negative": ["7", 0],
+            },
+        },
+        "11": {
+            "class_type": "VAEDecode",
+            "inputs": {"samples": ["10", 0], "vae": ["12", 0]},
+        },
+        "12": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "ae.safetensors"},
+        },
+        "13": {
+            "class_type": "MetaHubSaveNode",
+            "inputs": {"images": ["11", 0]},
+        },
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, missing = extractor.extract(save_node_id="13")
+
+    assert data["seed"] == 862877771869053
+    assert data["positive"] == "rabbit"
+    assert data["negative"] == ""
+    assert data["model_name"] == "zImageTurboNSFW_82BF16FP8.safetensors"
+    assert data["vae_name"] == "ae.safetensors"
+    assert data["lora_list"] == [{"name": "Z-Detail-Slider", "weight": 0.75}]
+    assert "seed" not in missing
+    assert "positive" not in missing
+
+
 
 def test_workflow_extractor_detects_img2img_lineage():
     prompt = {
