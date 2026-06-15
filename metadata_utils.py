@@ -14,6 +14,8 @@ from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
+METAHUB_SAVE_NODE_VERSION = "1.0.9"
+
 try:
     import piexif
     from piexif import helper as piexif_helper
@@ -391,8 +393,9 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
 
     safe_workflow = _sanitize(workflow_json.get('workflow', {}))
     safe_prompt = _sanitize(workflow_json.get('prompt', {}))
+    attribution = params.get("imh_attribution")
 
-    return {
+    metadata = {
         # CRITICAL: Required field for IMH detection
         "generator": "ComfyUI",
         "metadata_status": params.get("metadata_status", "partial"),
@@ -455,6 +458,73 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
         "workflow": safe_workflow,
         "prompt_api": safe_prompt,
     }
+
+    if isinstance(attribution, dict):
+        metadata["imh_attribution"] = _sanitize(attribution)
+
+    return metadata
+
+
+def normalize_imh_attribution(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, dict):
+        return None
+
+    token = value.get("token")
+    if not isinstance(token, str) or not token.strip():
+        return None
+
+    attribution = {
+        key: val
+        for key, val in value.items()
+        if isinstance(key, str) and key != "node_version"
+    }
+    attribution["schema_version"] = value.get("schema_version") or 1
+    attribution["token"] = token.strip()
+    attribution["source"] = value.get("source") if isinstance(value.get("source"), str) and value.get("source").strip() else "metahub_save_node"
+    attribution["node_version"] = METAHUB_SAVE_NODE_VERSION
+    return attribution
+
+
+def extract_workflow_attribution(workflow_json: dict, save_node_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not isinstance(workflow_json, dict):
+        return None
+
+    workflow = workflow_json.get("workflow")
+    if isinstance(workflow, str):
+        try:
+            workflow = json.loads(workflow)
+        except Exception:
+            return None
+
+    if not isinstance(workflow, dict):
+        return None
+
+    nodes = workflow.get("nodes")
+    if not isinstance(nodes, list):
+        return None
+
+    target_id = str(save_node_id) if save_node_id is not None else None
+    candidates = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if target_id is not None:
+            node_id = node.get("id")
+            if node_id is None or str(node_id) != target_id:
+                continue
+            candidates = [node]
+            break
+        if node.get("type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode") or node.get("class_type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode"):
+            candidates.append(node)
+
+    if len(candidates) != 1:
+        return None
+
+    props = candidates[0].get("properties")
+    if not isinstance(props, dict):
+        return None
+
+    return normalize_imh_attribution(props.get("imh_attribution"))
 
 
 def build_metadata_sources(manual_inputs: dict, extracted: dict, fields: List[str]) -> Dict[str, str]:

@@ -198,10 +198,12 @@ class MetaHubSaveVideoNode:
                 prompt_data = {}
 
             workflow_json = utils.ensure_prompt_in_workflow(workflow_json, prompt_data)
+            save_node_id = str(unique_id) if unique_id is not None else None
+            imh_attribution = utils.extract_workflow_attribution(workflow_json, save_node_id)
 
             # Use WorkflowExtractor to get generation params
             extractor = WorkflowExtractor(prompt_data)
-            extracted, missing_fields = extractor.extract(save_node_id=None)
+            extracted, missing_fields = extractor.extract(save_node_id=save_node_id)
             lora_list = extracted.get("lora_list") or utils.extract_loras_from_workflow(workflow_json)
 
         except Exception as e:
@@ -209,6 +211,7 @@ class MetaHubSaveVideoNode:
             extracted = {}
             lora_list = []
             workflow_json = {}
+            imh_attribution = None
 
         # Resolve values (manual override > extracted > default)
         def resolve_value(manual_value, extracted_value, default_value):
@@ -318,6 +321,7 @@ class MetaHubSaveVideoNode:
                     gpu_metrics=gpu_metrics,
                     version_info=version_info,
                     workflow_json=workflow_json,
+                    imh_attribution=imh_attribution,
                     metadata_sources=metadata_sources,
                     metadata_status=metadata_status,
                 )
@@ -353,6 +357,7 @@ class MetaHubSaveVideoNode:
         gpu_metrics: Dict[str, Any],
         version_info: Dict[str, str],
         workflow_json: Dict,
+        imh_attribution: Optional[Dict[str, Any]],
         metadata_sources: Dict[str, str],
         metadata_status: str,
     ) -> None:
@@ -413,6 +418,7 @@ class MetaHubSaveVideoNode:
             "comfyui_version": version_info.get("comfyui_version"),
             "torch_version": version_info.get("torch_version"),
             "python_version": version_info.get("python_version"),
+            "imh_attribution": imh_attribution,
             "metadata_sources": metadata_sources,
             "metadata_status": metadata_status,
         }
