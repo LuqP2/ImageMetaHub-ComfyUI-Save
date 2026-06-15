@@ -207,13 +207,14 @@ def build_video_metahub_metadata(params: dict, workflow_json: dict) -> dict:
         duration_seconds = round(frame_count / frame_rate, 2)
 
     sources = params.get("metadata_sources") if isinstance(params.get("metadata_sources"), dict) else {}
+    attribution = params.get("imh_attribution")
 
     def canonical(field: str, param_key: str, fallback: Any = None) -> Any:
         if sources.get(field) in {"default", "unknown"}:
             return None
         return params.get(param_key, fallback)
 
-    return {
+    metadata = {
         # CRITICAL: Required field for detection
         "generator": "ComfyUI",
         "media_type": "video",
@@ -278,6 +279,11 @@ def build_video_metahub_metadata(params: dict, workflow_json: dict) -> dict:
 
         # Full workflow JSON intentionally omitted for video containers.
     }
+
+    if isinstance(attribution, dict):
+        metadata["imh_attribution"] = _sanitize(attribution)
+
+    return metadata
 
 
 def inject_video_metadata(

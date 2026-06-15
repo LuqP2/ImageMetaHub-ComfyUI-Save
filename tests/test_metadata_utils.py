@@ -11,6 +11,7 @@ from metadata_utils import (
     build_metadata_status,
     ensure_metahub_save_node,
     ensure_prompt_in_workflow,
+    extract_workflow_attribution,
     find_model_file,
     get_next_filename,
     get_output_directory,
@@ -290,6 +291,61 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
     assert imh["source_image"]["fileName"] == "base.png"
     assert imh["metadata_status"] == "partial"
     assert imh["metadata_sources"] == {"model_name": "default"}
+
+
+def test_extract_workflow_attribution_from_node_properties():
+    workflow_json = {
+        "workflow": {
+            "nodes": [
+                {
+                    "id": 7,
+                    "type": "MetaHubSaveNode",
+                    "properties": {
+                        "imh_attribution": {
+                            "schema_version": 1,
+                            "token": " imhcrt_br_creator_workflow_v1_random ",
+                            "source": "metahub_save_node",
+                        }
+                    },
+                }
+            ]
+        }
+    }
+
+    attribution = extract_workflow_attribution(workflow_json, "7")
+
+    assert attribution["token"] == "imhcrt_br_creator_workflow_v1_random"
+    assert attribution["source"] == "metahub_save_node"
+    assert attribution["node_version"] == "1.0.9"
+
+
+def test_build_imh_metadata_includes_attribution_without_a1111_parameters():
+    params = {
+        "positive": "pos",
+        "negative": "neg",
+        "steps": 20,
+        "sampler": "euler",
+        "scheduler": "normal",
+        "cfg": 7.5,
+        "seed": 123,
+        "width": 512,
+        "height": 768,
+        "model_name": "model.safetensors",
+        "model_hash": "abcdef1234",
+        "lora_list": [],
+        "imh_attribution": {
+            "schema_version": 1,
+            "token": "imhcrt_br_creator_workflow_v1_random",
+            "source": "metahub_save_node",
+            "node_version": "1.0.9",
+        },
+    }
+
+    imh = build_imh_metadata(params, {"workflow": {"nodes": []}, "prompt": {}})
+    a1111 = build_a1111_metadata(params)
+
+    assert imh["imh_attribution"]["token"] == "imhcrt_br_creator_workflow_v1_random"
+    assert "imhcrt_br_creator_workflow_v1_random" not in a1111
 
 
 def test_build_imh_metadata_sanitizes_nan():

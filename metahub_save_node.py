@@ -293,6 +293,7 @@ class MetaHubSaveNode:
                 class_type=save_node_class_type,
                 display_name=save_node_display_name,
             )
+            imh_attribution = utils.extract_workflow_attribution(workflow_json, save_node_id)
 
             extractor = WorkflowExtractor(prompt_data)
             extracted, missing_fields = extractor.extract(
@@ -429,6 +430,7 @@ class MetaHubSaveNode:
                 "parent_image": parent_image,
                 "generation_type": extracted.get("generation_type"),
                 "source_image": extracted.get("source_image"),
+                "imh_attribution": imh_attribution,
                 # Performance metrics (Tier 1, 2, 3)
                 "vram_peak_mb": vram_peak_mb if vram_peak_mb is not None else gpu_metrics.get("vram_peak_mb"),
                 "gpu_device": gpu_device_override if gpu_device_override else gpu_metrics.get("gpu_device"),

@@ -24,6 +24,28 @@ def test_video_metadata_omits_full_workflow_payloads():
     assert "prompt_api" not in payload
 
 
+def test_video_metadata_includes_attribution_without_workflow_payloads():
+    payload = build_video_metahub_metadata(
+        {
+            "positive": "prompt",
+            "negative": "",
+            "width": 640,
+            "height": 480,
+            "imh_attribution": {
+                "schema_version": 1,
+                "token": "imhcrt_br_creator_workflow_v1_random",
+                "source": "metahub_save_node",
+                "node_version": "1.0.9",
+            },
+        },
+        {"workflow": {"nodes": [{"id": 1}]}, "prompt": {"1": {"class_type": "KSampler"}}},
+    )
+
+    assert payload["imh_attribution"]["token"] == "imhcrt_br_creator_workflow_v1_random"
+    assert "workflow" not in payload
+    assert "prompt_api" not in payload
+
+
 def test_video_metadata_nulls_defaulted_canonical_fields():
     payload = build_video_metahub_metadata(
         {
