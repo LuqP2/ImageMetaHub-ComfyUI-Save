@@ -8,7 +8,7 @@ license = {file = "LICENSE"}
 #     "Operating System :: OS Independent",
 #
 #     # OR for OS-specific nodes, specify the supported systems:
-#     "Operating System W:: Microsoft :: Windows",  # Windows specific
+#     "Operating System :: Microsoft :: Windows",  # Windows specific
 #     "Operating System :: POSIX :: Linux",  # Linux specific
 #     "Operating System :: MacOS",  # macOS specific
 #
@@ -20,7 +20,7 @@ license = {file = "LICENSE"}
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["Pillow>=10.0.0", "numpy>=1.24.0", "piexif>=1.1.3"]
+dependencies = []
 
 [project.urls]
 Repository = "https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save"
@@ -34,4 +34,3 @@ DisplayName = "ImageMetaHub-ComfyUI-Save"
 Icon = ""
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
-
