@@ -11,7 +11,7 @@ try:
 except ImportError:
     import metadata_utils_impl as _impl
 
-METAHUB_SAVE_NODE_VERSION = "1.1.0"
+METAHUB_SAVE_NODE_VERSION = "1.1.1"
 _impl.METAHUB_SAVE_NODE_VERSION = METAHUB_SAVE_NODE_VERSION
 
 for _name in dir(_impl):
