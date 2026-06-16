@@ -3,7 +3,7 @@ Compatibility shim for MetaHub Save Node metadata helpers.
 
 The implementation is kept in metadata_utils_impl.py; this module exposes the
 same public API expected by the save nodes while pinning the published node
-version to 1.1.2.
+version to 1.1.3.
 """
 
 try:
@@ -11,7 +11,7 @@ try:
 except ImportError:
     import metadata_utils_impl as _impl
 
-METAHUB_SAVE_NODE_VERSION = "1.1.2"
+METAHUB_SAVE_NODE_VERSION = "1.1.3"
 _impl.METAHUB_SAVE_NODE_VERSION = METAHUB_SAVE_NODE_VERSION
 
 for _name in dir(_impl):

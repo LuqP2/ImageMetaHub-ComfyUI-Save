@@ -16,6 +16,7 @@ from metadata_utils import (
     get_next_filename,
     get_output_directory,
     get_workflow_json,
+    make_civitai_safe_text,
     resolve_filename_pattern_path,
     save_png_with_metadata,
 )
@@ -316,7 +317,7 @@ def test_extract_workflow_attribution_from_node_properties():
 
     assert attribution["token"] == "imhcrt_br_creator_workflow_v1_random"
     assert attribution["source"] == "metahub_save_node"
-    assert attribution["node_version"] == "1.0.9"
+    assert attribution["node_version"] == "1.1.3"
 
 
 def test_build_imh_metadata_includes_attribution_without_a1111_parameters():
@@ -399,6 +400,42 @@ def test_build_a1111_metadata_formats_text():
     assert "Size: 512x768" in text
     assert "Model: model.safetensors" in text
     assert "Model hash: abcdef1234" in text
+
+
+def test_make_civitai_safe_text_normalizes_smart_punctuation():
+    text = "McDonald\u2019s \u201cquote\u201d \u2013 dash \u2014 dash\u2026space\u00a0here"
+
+    assert make_civitai_safe_text(text) == "McDonald's \"quote\" - dash - dash...space here"
+
+
+def test_save_png_with_metadata_sanitizes_only_parameters_chunk(tmp_path):
+    imh_metadata = {
+        "prompt": "McDonald\u2019s \u201cquote\u201d",
+        "workflow": {"nodes": [{"title": "McDonald\u2019s \u201cquote\u201d"}]},
+        "prompt_api": {
+            "1": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": "McDonald\u2019s \u201cquote\u201d"},
+            }
+        },
+    }
+    image = Image.new("RGB", (2, 2), color=(0, 0, 0))
+    file_path = tmp_path / "civitai-safe.png"
+
+    save_png_with_metadata(
+        image,
+        str(file_path),
+        "McDonald\u2019s \u201cquote\u201d \u2013 dash\u2026",
+        imh_metadata,
+    )
+
+    loaded = Image.open(file_path)
+    text = getattr(loaded, "text", {})
+
+    assert text["parameters"] == "McDonald's \"quote\" - dash..."
+    assert json.loads(text["imagemetahub_data"])["prompt"] == "McDonald\u2019s \u201cquote\u201d"
+    assert json.loads(text["workflow"])["nodes"][0]["title"] == "McDonald\u2019s \u201cquote\u201d"
+    assert json.loads(text["prompt"])["1"]["inputs"]["text"] == "McDonald\u2019s \u201cquote\u201d"
 
 
 def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):

@@ -14,7 +14,7 @@ from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
-METAHUB_SAVE_NODE_VERSION = "1.0.9"
+METAHUB_SAVE_NODE_VERSION = "1.1.3"
 
 try:
     import piexif
@@ -314,6 +314,28 @@ def collect_version_info() -> Dict[str, Optional[str]]:
 # ============================================================================
 # METADATA FORMATTING
 # ============================================================================
+
+def make_civitai_safe_text(value: str) -> str:
+    """
+    Normalizes common smart punctuation for legacy A1111/Civitai text readers.
+    """
+    if value is None:
+        return ""
+    replacements = {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2026": "...",
+        "\u00a0": " ",
+    }
+    text = str(value)
+    for source, replacement in replacements.items():
+        text = text.replace(source, replacement)
+    return text
+
 
 def build_a1111_metadata(params: dict) -> str:
     """
@@ -836,7 +858,7 @@ def save_png_with_metadata(image: Image.Image, image_path: str, a1111_metadata: 
     """
     try:
         png_info = PngImagePlugin.PngInfo()
-        png_info.add_text("parameters", a1111_metadata or "")
+        png_info.add_text("parameters", make_civitai_safe_text(a1111_metadata))
         imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
         png_info.add_itxt("imagemetahub_data", imh_json)
         workflow_text = _serialize_metadata_json_ascii(imh_metadata.get("workflow"))
@@ -861,9 +883,10 @@ def _build_exif_bytes(a1111_metadata: str, imh_metadata: dict) -> Optional[bytes
         imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
         if imh_json:
             exif_dict["0th"][piexif.ImageIFD.ImageDescription] = imh_json.encode("utf-8", errors="replace")
-        if a1111_metadata:
+        civitai_metadata = make_civitai_safe_text(a1111_metadata)
+        if civitai_metadata:
             exif_dict["Exif"][piexif.ExifIFD.UserComment] = piexif_helper.UserComment.dump(
-                a1111_metadata, encoding="unicode"
+                civitai_metadata, encoding="unicode"
             )
         return piexif.dump(exif_dict)
     except Exception:
@@ -889,7 +912,7 @@ def save_jpeg_with_metadata(
         if exif_bytes:
             save_kwargs["exif"] = exif_bytes
         elif a1111_metadata:
-            save_kwargs["comment"] = a1111_metadata.encode("utf-8", errors="replace")
+            save_kwargs["comment"] = make_civitai_safe_text(a1111_metadata).encode("utf-8", errors="replace")
         if xmp_bytes:
             save_kwargs["xmp"] = xmp_bytes
         try:
@@ -922,7 +945,7 @@ def save_webp_with_metadata(
         if exif_bytes:
             save_kwargs["exif"] = exif_bytes
         elif a1111_metadata:
-            save_kwargs["comment"] = a1111_metadata
+            save_kwargs["comment"] = make_civitai_safe_text(a1111_metadata)
         if xmp_bytes:
             save_kwargs["xmp"] = xmp_bytes
         try:
