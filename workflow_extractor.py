@@ -157,11 +157,39 @@ class WorkflowExtractor:
             seed = self._coerce_int(
                 self._resolve_scalar_from_connection(inputs.get("seed"), ("seed", "value"))
             )
+        if seed is None:
+            seed = self._coerce_int(
+                self._resolve_scalar_from_connection(inputs.get("noise"), ("noise_seed", "seed", "value"))
+            )
+        if seed is None:
+            seed = self._coerce_int(
+                self._resolve_scalar_from_connection(inputs.get("sampler"), ("seed", "noise_seed", "value"))
+            )
         steps = self._coerce_int(self._get_literal_input(inputs, "steps"))
+        if steps is None:
+            steps = self._coerce_int(
+                self._resolve_scalar_from_connection(inputs.get("sigmas"), ("steps", "value"))
+            )
         cfg = self._coerce_float(self._get_first_literal(inputs, ("cfg", "cfg_scale")))
+        if cfg is None:
+            cfg = self._coerce_float(
+                self._resolve_scalar_from_connection(inputs.get("guider"), ("cfg", "cfg_scale", "scale"))
+            )
         sampler_name = self._get_first_literal(inputs, ("sampler_name", "sampler"))
+        if sampler_name is None:
+            sampler_name = self._resolve_scalar_from_connection(
+                inputs.get("sampler"), ("sampler_name", "sampler", "name")
+            )
         scheduler = self._get_first_literal(inputs, ("scheduler", "scheduler_name"))
+        if scheduler is None:
+            scheduler = self._resolve_scalar_from_connection(
+                inputs.get("sigmas"), ("scheduler", "scheduler_name", "name")
+            )
         denoise = self._coerce_float(self._get_first_literal(inputs, ("denoise", "denoise_strength")))
+        if denoise is None:
+            denoise = self._coerce_float(
+                self._resolve_scalar_from_connection(inputs.get("sigmas"), ("denoise", "denoise_strength"))
+            )
 
         return {
             "seed": seed,
@@ -176,12 +204,16 @@ class WorkflowExtractor:
         node = self._get_node(sampler_node_id)
         if not node:
             return None
-        model_conn = node.get("inputs", {}).get("model")
-        start_node_id = self._get_connection_node_id(model_conn)
-        if not start_node_id:
+        inputs = node.get("inputs", {})
+        start_node_ids = []
+        for input_name in ("model", "guider", "sigmas"):
+            start_node_id = self._get_connection_node_id(inputs.get(input_name))
+            if start_node_id:
+                start_node_ids.append(start_node_id)
+        if not start_node_ids:
             return None
         checkpoint_node_id = self._bfs_upstream(
-            [start_node_id],
+            start_node_ids,
             lambda n: self._class_type(n) in self.CHECKPOINT_NODES,
         )
         if not checkpoint_node_id:
@@ -222,6 +254,10 @@ class WorkflowExtractor:
         negative_conn = inputs.get("negative") or inputs.get("negative_cond")
         positive = self._extract_text_from_connection(positive_conn)
         negative = self._extract_text_from_connection(negative_conn)
+        if positive is None:
+            positive = self._extract_text_from_connection(inputs.get("guider"))
+        if negative is None:
+            negative = self._extract_text_from_connection(inputs.get("negative_conditioning"))
         return positive, negative
 
     def extract_loras(self) -> Tuple[List[Dict[str, Any]], bool]:

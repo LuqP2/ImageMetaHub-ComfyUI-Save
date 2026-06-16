@@ -281,3 +281,75 @@ def test_workflow_extractor_detects_img2img_lineage():
     assert data["generation_type"] == "img2img"
     assert data["source_image"]["fileName"] == "base.png"
     assert data["source_image"]["relativePath"] == "inputs/base.png"
+
+
+def test_workflow_extractor_resolves_custom_advanced_sampler_chain():
+    prompt = {
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "positive prompt", "clip": ["97", 0]},
+        },
+        "39": {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": "diffusion_pytorch_model.safetensors"},
+        },
+        "61": {
+            "class_type": "SamplerCustomAdvanced",
+            "inputs": {
+                "noise": ["63", 0],
+                "guider": ["101", 0],
+                "sampler": ["108", 0],
+                "sigmas": ["62", 0],
+                "latent_image": ["104", 0],
+            },
+        },
+        "62": {
+            "class_type": "BasicScheduler",
+            "inputs": {"scheduler": "beta", "steps": 9, "denoise": 1.0, "model": ["100", 0]},
+        },
+        "63": {
+            "class_type": "RandomNoise",
+            "inputs": {"noise_seed": 604786586961193},
+        },
+        "71": {
+            "class_type": "VAEDecode",
+            "inputs": {"samples": ["61", 0], "vae": ["39", 0]},
+        },
+        "91": {
+            "class_type": "UNETLoader",
+            "inputs": {"unet_name": "jibMixZIT_v10.safetensors"},
+        },
+        "100": {
+            "class_type": "ModelSamplingAuraFlow",
+            "inputs": {"shift": 5.0, "model": ["91", 0]},
+        },
+        "101": {
+            "class_type": "BasicGuider",
+            "inputs": {"model": ["100", 0], "conditioning": ["6", 0]},
+        },
+        "104": {
+            "class_type": "EmptyLatentImage",
+            "inputs": {"width": 1024, "height": 1024, "batch_size": 1},
+        },
+        "108": {
+            "class_type": "ClownSampler_Beta",
+            "inputs": {"eta": 0.23, "sampler_name": "linear/ralston_2s", "seed": 141088624843721},
+        },
+        "112": {
+            "class_type": "MetaHubSaveImage",
+            "inputs": {"images": ["71", 0]},
+        },
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, missing = extractor.extract(save_node_id="112")
+
+    assert data["seed"] == 604786586961193
+    assert data["steps"] == 9
+    assert data["sampler_name"] == "linear/ralston_2s"
+    assert data["scheduler"] == "beta"
+    assert data["denoise"] == 1.0
+    assert data["positive"] == "positive prompt"
+    assert data["model_name"] == "jibMixZIT_v10.safetensors"
+    assert data["vae_name"] == "diffusion_pytorch_model.safetensors"
+    assert {"seed", "steps", "sampler_name", "scheduler", "denoise", "positive", "model_name", "vae_name"}.isdisjoint(missing)
