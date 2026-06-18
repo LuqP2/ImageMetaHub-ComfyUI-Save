@@ -135,6 +135,75 @@ def test_workflow_extractor_detects_lora_alternate_keys():
     assert data["lora_list"] == [{"name": "style.safetensors", "weight": 0.65}]
 
 
+def test_workflow_extractor_detects_rgthree_power_lora_objects():
+    prompt = {
+        "67": {
+            "class_type": "Power Lora Loader (rgthree)",
+            "inputs": {
+                "lora_1": {
+                    "on": True,
+                    "lora": "Z-Detail-Slider.safetensors",
+                    "strength": 0.5325,
+                },
+                "lora_2": {
+                    "on": True,
+                    "lora": "zy_CinematicShot_zit.safetensors",
+                    "strength": 0.6875,
+                },
+                "lora_3": {
+                    "on": False,
+                    "lora": "disabled.safetensors",
+                    "strength": 1.0,
+                },
+            },
+        }
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, _missing = extractor.extract()
+
+    assert data["lora_list"] == [
+        {"name": "Z-Detail-Slider.safetensors", "weight": 0.5325},
+        {"name": "zy_CinematicShot_zit.safetensors", "weight": 0.6875},
+    ]
+
+
+def test_workflow_extractor_reads_style_prompt_encoder_through_basic_guider():
+    prompt = {
+        "61": {
+            "class_type": "SamplerCustomAdvanced",
+            "inputs": {
+                "noise": ["63", 0],
+                "guider": ["101", 0],
+                "sampler": ["108", 0],
+                "sigmas": ["62", 0],
+                "latent_image": ["113", 0],
+            },
+        },
+        "101": {
+            "class_type": "BasicGuider",
+            "inputs": {
+                "model": ["100", 0],
+                "conditioning": ["114", 0],
+            },
+        },
+        "114": {
+            "class_type": "StylePromptEncoder2 //ZImagePowerNodes",
+            "inputs": {
+                "style": "\"Production Photo\"",
+                "text": "A white cat on the roof of a brick house",
+                "clip": ["67", 1],
+            },
+        },
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, missing = extractor.extract()
+
+    assert data["positive"] == "A white cat on the roof of a brick house"
+    assert "positive" not in missing
+
+
 def test_workflow_extractor_resolves_connected_seed_and_prompt_strings():
     prompt = {
         "1": {

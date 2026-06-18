@@ -274,8 +274,12 @@ class WorkflowExtractor:
             if stacked_loras:
                 loras.extend(stacked_loras)
                 continue
+            dynamic_loras = self._extract_dynamic_lora_entries(inputs)
+            if dynamic_loras:
+                loras.extend(dynamic_loras)
+                continue
             lora_name = self._get_first_literal(inputs, ("lora_name", "lora", "lora_name_1", "lora_1"))
-            if not lora_name:
+            if not isinstance(lora_name, str) or not lora_name.strip():
                 continue
             strength_model = self._get_first_literal(
                 inputs,
@@ -290,6 +294,28 @@ class WorkflowExtractor:
             loras.append({"name": lora_name, "weight": float(weight)})
 
         return loras, has_lora_nodes
+
+    def _extract_dynamic_lora_entries(self, inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
+        loras: List[Dict[str, Any]] = []
+        for key, raw_lora in inputs.items():
+            if not key.lower().startswith("lora_") or not isinstance(raw_lora, dict):
+                continue
+            if raw_lora.get("on") is False or raw_lora.get("active") is False:
+                continue
+            name = raw_lora.get("lora") or raw_lora.get("lora_name") or raw_lora.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            weight = self._coerce_float(
+                raw_lora.get("strength")
+                if raw_lora.get("strength") is not None
+                else raw_lora.get("modelStrength")
+            )
+            if weight is None:
+                weight = self._coerce_float(raw_lora.get("strength_model"))
+            if weight is None:
+                weight = 1.0
+            loras.append({"name": name, "weight": float(weight)})
+        return loras
 
     def _extract_lora_manager_entries(self, inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
         raw_loras = inputs.get("loras")
@@ -453,7 +479,7 @@ class WorkflowExtractor:
             class_type = self._class_type(node)
             if class_type == "ConditioningZeroOut":
                 return ""
-            if class_type in self.CLIP_NODES:
+            if self._is_prompt_encoder(class_type):
                 text = self._get_clip_text(node)
                 if text is not None:
                     texts.append(text)
@@ -506,7 +532,7 @@ class WorkflowExtractor:
         if class_type == "ConditioningZeroOut":
             return ""
 
-        if class_type in self.CLIP_NODES:
+        if self._is_prompt_encoder(class_type):
             return self._get_clip_text(node)
 
         if class_lower == "joinstrings" or "join strings" in class_lower:
@@ -663,3 +689,9 @@ class WorkflowExtractor:
         if class_type in cls.LORA_NODES:
             return True
         return "lora" in class_type.lower()
+
+    @classmethod
+    def _is_prompt_encoder(cls, class_type: str) -> bool:
+        if class_type in cls.CLIP_NODES:
+            return True
+        return "promptencoder" in class_type.lower().replace(" ", "")
