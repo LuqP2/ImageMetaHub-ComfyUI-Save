@@ -14,7 +14,7 @@ from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
-METAHUB_SAVE_NODE_VERSION = "1.1.3"
+METAHUB_SAVE_NODE_VERSION = "1.1.5"
 
 try:
     import piexif
@@ -1374,6 +1374,9 @@ def build_ui_preview(saved_paths: List[Path], output_base: Path) -> dict:
 
     return {
         "ui": {
-            "images": ui_images
+            "images": ui_images,
+            "imagemetahub": {
+                "files": [str(file_path.resolve()) for file_path in saved_paths]
+            }
         }
     }

@@ -9,18 +9,12 @@ const METAHUB_SAVE_NODE_CLASSES = new Set([
 const IMAGE_METAHUB_URL = "https://www.imagemetahub.com/";
 const IMAGE_METAHUB_DEEPLINK = "imagemetahub://open";
 
-function getWidgetValue(node, widgetName) {
-    const widget = node.widgets?.find((candidate) => candidate.name === widgetName);
-    const value = widget?.value;
-    return typeof value === "string" ? value.trim() : "";
-}
-
 function buildDeepLink(node) {
-    const outputPath = getWidgetValue(node, "output_path");
+    const savedPath = node.__imageMetaHubLastSavedPath;
     const params = new URLSearchParams({ source: "comfyui-save-node" });
 
-    if (outputPath) {
-        params.set("path", outputPath);
+    if (savedPath) {
+        params.set("file", savedPath);
     }
 
     return `${IMAGE_METAHUB_DEEPLINK}?${params.toString()}`;
@@ -28,6 +22,14 @@ function buildDeepLink(node) {
 
 function openUrl(url) {
     window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function getSavedPaths(message) {
+    const files = message?.imagemetahub?.files;
+    if (!Array.isArray(files)) {
+        return [];
+    }
+    return files.filter((filePath) => typeof filePath === "string" && filePath.trim());
 }
 
 function addMetaHubCTA(node) {
@@ -40,17 +42,31 @@ function addMetaHubCTA(node) {
     }
 
     node.__imageMetaHubCTAAdded = true;
+    const originalOnExecuted = node.onExecuted;
+    node.onExecuted = function (message) {
+        originalOnExecuted?.apply(this, arguments);
+        const savedPaths = getSavedPaths(message);
+        if (savedPaths.length > 0) {
+            this.__imageMetaHubLastSavedPath = savedPaths[savedPaths.length - 1];
+        }
+    };
 
     node.addWidget(
         "button",
         "Open in Image MetaHub",
         null,
-        () => openUrl(buildDeepLink(node))
+        () => {
+            if (!node.__imageMetaHubLastSavedPath) {
+                window.alert("Generate an image with this node first.");
+                return;
+            }
+            openUrl(buildDeepLink(node));
+        }
     );
 
     node.addWidget(
         "button",
-        "Download Image MetaHub",
+        "Get Image MetaHub",
         null,
         () => openUrl(IMAGE_METAHUB_URL)
     );

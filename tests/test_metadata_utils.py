@@ -19,6 +19,7 @@ from metadata_utils import (
     make_civitai_safe_text,
     resolve_filename_pattern_path,
     save_png_with_metadata,
+    build_ui_preview,
 )
 from PIL import Image
 
@@ -39,6 +40,22 @@ def _read_png_text_chunks(path: Path) -> dict:
                 keyword, text = chunk_data.split(b"\x00", 1)
                 chunks[keyword.decode("latin-1")] = text.decode("latin-1")
     return chunks
+
+
+def test_build_ui_preview_exposes_absolute_paths_for_image_metahub(tmp_path):
+    output_base = tmp_path / "output"
+    saved_path = output_base / "session" / "image.png"
+    saved_path.parent.mkdir(parents=True)
+    saved_path.touch()
+
+    result = build_ui_preview([saved_path], output_base)
+
+    assert result["ui"]["images"] == [{
+        "filename": "image.png",
+        "subfolder": "session",
+        "type": "output",
+    }]
+    assert result["ui"]["imagemetahub"]["files"] == [str(saved_path.resolve())]
 
 
 def _save_simple_png(path: Path) -> None:
@@ -317,7 +334,7 @@ def test_extract_workflow_attribution_from_node_properties():
 
     assert attribution["token"] == "imhcrt_br_creator_workflow_v1_random"
     assert attribution["source"] == "metahub_save_node"
-    assert attribution["node_version"] == "1.1.3"
+    assert attribution["node_version"] == "1.1.5"
 
 
 def test_build_imh_metadata_includes_attribution_without_a1111_parameters():
