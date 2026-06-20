@@ -25,11 +25,27 @@ function openUrl(url) {
 }
 
 function getSavedPaths(message) {
-    const files = message?.imagemetahub?.files;
-    if (!Array.isArray(files)) {
-        return [];
+    const candidates = [
+        message?.imagemetahub?.files,
+        message?.ui?.imagemetahub?.files,
+    ];
+
+    for (const files of candidates) {
+        if (Array.isArray(files)) {
+            return files.filter(
+                (filePath) => typeof filePath === "string" && filePath.trim()
+            );
+        }
     }
-    return files.filter((filePath) => typeof filePath === "string" && filePath.trim());
+
+    return [];
+}
+
+function captureLastSavedPath(node, message) {
+    const savedPaths = getSavedPaths(message);
+    if (savedPaths.length > 0) {
+        node.__imageMetaHubLastSavedPath = savedPaths[savedPaths.length - 1];
+    }
 }
 
 function addMetaHubCTA(node) {
@@ -42,14 +58,6 @@ function addMetaHubCTA(node) {
     }
 
     node.__imageMetaHubCTAAdded = true;
-    const originalOnExecuted = node.onExecuted;
-    node.onExecuted = function (message) {
-        originalOnExecuted?.apply(this, arguments);
-        const savedPaths = getSavedPaths(message);
-        if (savedPaths.length > 0) {
-            this.__imageMetaHubLastSavedPath = savedPaths[savedPaths.length - 1];
-        }
-    };
 
     node.addWidget(
         "button",
@@ -74,6 +82,18 @@ function addMetaHubCTA(node) {
 
 app.registerExtension({
     name: "ImageMetaHub.SaveNodeCTA",
+
+    async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (!METAHUB_SAVE_NODE_CLASSES.has(nodeData.name)) {
+            return;
+        }
+
+        const originalOnExecuted = nodeType.prototype.onExecuted;
+        nodeType.prototype.onExecuted = function (message) {
+            originalOnExecuted?.apply(this, arguments);
+            captureLastSavedPath(this, message);
+        };
+    },
 
     async nodeCreated(node) {
         addMetaHubCTA(node);

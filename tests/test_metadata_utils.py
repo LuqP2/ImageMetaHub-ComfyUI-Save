@@ -334,7 +334,7 @@ def test_extract_workflow_attribution_from_node_properties():
 
     assert attribution["token"] == "imhcrt_br_creator_workflow_v1_random"
     assert attribution["source"] == "metahub_save_node"
-    assert attribution["node_version"] == "1.1.5"
+    assert attribution["node_version"] == "1.1.6"
 
 
 def test_build_imh_metadata_includes_attribution_without_a1111_parameters():
