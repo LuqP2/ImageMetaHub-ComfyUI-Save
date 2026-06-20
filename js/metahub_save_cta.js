@@ -26,6 +26,8 @@ function openUrl(url) {
 
 function getSavedPaths(message) {
     const candidates = [
+        message?.imagemetahub_files,
+        message?.ui?.imagemetahub_files,
         message?.imagemetahub?.files,
         message?.ui?.imagemetahub?.files,
     ];

@@ -55,7 +55,7 @@ def test_build_ui_preview_exposes_absolute_paths_for_image_metahub(tmp_path):
         "subfolder": "session",
         "type": "output",
     }]
-    assert result["ui"]["imagemetahub"]["files"] == [str(saved_path.resolve())]
+    assert result["ui"]["imagemetahub_files"] == [str(saved_path.resolve())]
 
 
 def _save_simple_png(path: Path) -> None:
@@ -334,7 +334,7 @@ def test_extract_workflow_attribution_from_node_properties():
 
     assert attribution["token"] == "imhcrt_br_creator_workflow_v1_random"
     assert attribution["source"] == "metahub_save_node"
-    assert attribution["node_version"] == "1.1.6"
+    assert attribution["node_version"] == "1.1.7"
 
 
 def test_build_imh_metadata_includes_attribution_without_a1111_parameters():
