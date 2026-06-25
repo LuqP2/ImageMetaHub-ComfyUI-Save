@@ -4,15 +4,18 @@ Entry point for node registration
 """
 
 try:
+    from .metahub_input_node import MetaHubInputNode
     from .metahub_save_node import MetaHubSaveImage, MetaHubSaveNode
     from .metahub_save_video_node import MetaHubSaveVideoNode
     from .timer_node import MetaHubTimerNode
 except ImportError:
+    from metahub_input_node import MetaHubInputNode
     from metahub_save_node import MetaHubSaveImage, MetaHubSaveNode
     from metahub_save_video_node import MetaHubSaveVideoNode
     from timer_node import MetaHubTimerNode
 
 NODE_CLASS_MAPPINGS = {
+    "MetaHubInputNode": MetaHubInputNode,
     "MetaHubSaveImage": MetaHubSaveImage,
     "MetaHubSaveNode": MetaHubSaveNode,
     "MetaHubSaveVideoNode": MetaHubSaveVideoNode,
@@ -20,6 +23,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "MetaHubInputNode": "MetaHub Input",
     "MetaHubSaveImage": "MetaHub Save Image",
     "MetaHubSaveNode": "MetaHub Save Image Advanced",
     "MetaHubSaveVideoNode": "MetaHub Save Video",
