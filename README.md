@@ -17,6 +17,7 @@ Advanced image saving node for ComfyUI with dual metadata support.
 - **Filename Patterns** - Placeholder-based filenames with sanitization
 - **A1111/Civitai Compatible** - Saves metadata in tEXt chunk ("parameters") recognized by Automatic1111, Civitai, and most SD tools
 - **Image MetaHub Compatible** - Saves extended metadata in iTXt chunk ("imagemetahub_data") with full workflow JSON
+- **MetaHub Input Bridge** - Loads prepared image/mask/outpaint assets from Image MetaHub into your own ComfyUI workflows
 - **Model Hashes** - Calculates SHA256 hashes (AutoV2 format) for models and LoRAs
 - **IMH Pro Fields** - Support for user tags, notes, and project names
 - **Performance** - Hash caching and graceful degradation ensure fast generation
@@ -95,6 +96,34 @@ If a workflow uses custom nodes that the extractor cannot understand yet, the
 image is still saved and the metadata is marked as `partial`. In that case,
 connect only the missing override sockets you care about, such as `positive`,
 `seed`, or `model_name`.
+
+### MetaHub Input Bridge
+
+Use **MetaHub Input** when you prepare an existing image in Image MetaHub and
+want to continue it inside your own ComfyUI workflow.
+
+1. In Image MetaHub, open an image and choose **Prepare for Generation**.
+2. Paint a mask or expand the canvas if needed.
+3. Click **Send to ComfyUI Bridge**.
+4. In ComfyUI, add **MetaHub Input** to your workflow.
+5. Leave `bridge_dir` blank to use the shared default folder, or paste the
+   bridge folder shown in Image MetaHub settings.
+6. Connect `image` and `mask` wherever your workflow expects prepared inputs.
+
+MetaHub Input reads from:
+
+```text
+~/ImageMetaHub/comfyui_bridge/latest/
+  image.png
+  mask.png
+  metadata.json
+```
+
+Set `session_id` to `latest` for the newest bridge payload, or to a folder name
+under `sessions/` for a specific prepared payload. If Image MetaHub did not send
+a mask, MetaHub Input returns an all-black mask matching the image dimensions.
+The node also outputs `metadata_json`, `denoise`, `intent`, `source_path`,
+`session_id`, `width`, and `height`.
 
 ### Override (Optional)
 
@@ -298,7 +327,7 @@ The Performance section in Image MetaHub App displays:
 - Steps per second benchmark
 - Software versions (ComfyUI, PyTorch, Python)
 
-**Generating Variations**: Image MetaHub App includes a "Generate with ComfyUI" feature that creates simple txt2img workflows from saved metadata and sends them to your ComfyUI instance via API. See the [Image MetaHub documentation](https://github.com/LuqP2/Image-MetaHub) for details on workflow generation and ComfyUI integration features.
+**Continuing Images in ComfyUI**: Image MetaHub's primary custom-workflow path is the local ComfyUI Bridge. Prepare the image/mask/outpaint canvas in Image MetaHub, send it to the bridge, then load it with **MetaHub Input** inside your own workflow. Image MetaHub may also offer a quick generated workflow for simple fallback runs, but it does not rewrite arbitrary custom ComfyUI graphs.
 
 ## Troubleshooting
 
