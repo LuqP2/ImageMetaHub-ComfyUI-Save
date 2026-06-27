@@ -133,10 +133,33 @@ function syncMetaHubCTA(node) {
     }
 }
 
-function syncAllMetaHubCTAs() {
-    for (const node of app.graph?._nodes ?? []) {
-        syncMetaHubCTA(node);
+function getGraphNodes(graph) {
+    if (Array.isArray(graph?._nodes)) {
+        return graph._nodes;
     }
+
+    if (Array.isArray(graph?.nodes)) {
+        return graph.nodes;
+    }
+
+    return [];
+}
+
+function walkGraphNodes(graph, visitor, visitedGraphs = new Set()) {
+    if (!graph || visitedGraphs.has(graph)) {
+        return;
+    }
+
+    visitedGraphs.add(graph);
+
+    for (const node of getGraphNodes(graph)) {
+        visitor(node);
+        walkGraphNodes(node?.subgraph, visitor, visitedGraphs);
+    }
+}
+
+function syncAllMetaHubCTAs() {
+    walkGraphNodes(app.graph, syncMetaHubCTA);
 
     app.graph?.setDirtyCanvas?.(true, true);
 }
