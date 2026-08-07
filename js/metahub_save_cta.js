@@ -4,6 +4,7 @@ const METAHUB_SAVE_NODE_CLASSES = new Set([
     "MetaHubSaveImage",
     "MetaHubSaveNode",
     "MetaHubSaveVideoNode",
+    "MetaHubSave3DModel",
 ]);
 
 const IMAGE_METAHUB_URL = "https://www.imagemetahub.com/";

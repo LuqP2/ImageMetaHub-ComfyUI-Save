@@ -1,4 +1,4 @@
-# MetaHub Save Image - ComfyUI Custom Node
+# MetaHub Save - ComfyUI Custom Nodes
 [![Official Companion](https://img.shields.io/badge/Official%20companion-Image%20MetaHub-2b6cb0)](https://github.com/LuqP2/Image-MetaHub) [![Comfy Registry](https://img.shields.io/badge/Comfy-Registry-blue)](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save)
 
 
@@ -7,13 +7,14 @@ https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-s
 
 Official companion node for [Image MetaHub](https://github.com/LuqP2/Image-MetaHub). 
 
-Advanced image saving node for ComfyUI with dual metadata support.
+Advanced image and 3D model saving nodes for ComfyUI with complete Image MetaHub metadata support.
 
 ## Features
 
 - **Auto-Extraction** - Detects sampler params, prompts, model/VAE, and LoRAs directly from your workflow
 - **Performance Metrics** - Auto-tracks GPU usage, VRAM peak, generation time, and software versions
 - **Multi-Format** - PNG, JPEG, and WebP with metadata injection
+- **3D Models** - Saves MESH as GLB and preserves File3D GLB, GLTF, OBJ, FBX, or STL inputs
 - **Filename Patterns** - Placeholder-based filenames with sanitization
 - **A1111/Civitai Compatible** - Saves metadata in tEXt chunk ("parameters") recognized by Automatic1111, Civitai, and most SD tools
 - **Image MetaHub Compatible** - Saves extended metadata in iTXt chunk ("imagemetahub_data") with full workflow JSON
@@ -96,6 +97,19 @@ If a workflow uses custom nodes that the extractor cannot understand yet, the
 image is still saved and the metadata is marked as `partial`. In that case,
 connect only the missing override sockets you care about, such as `positive`,
 `seed`, or `model_name`.
+
+### Saving 3D Models
+
+1. Add **MetaHub Save 3D Model** from `3d/save`.
+2. Connect a ComfyUI `MESH` or File3D GLB/GLTF/OBJ/FBX/STL output.
+3. Generate. MESH inputs are written as GLB; File3D inputs keep their format.
+
+The node returns `ui.3d` for ComfyUI's native 3D preview. Every supported
+format receives `<model>.<ext>.imagemetahub.json`; GLB also embeds the same
+payload at `asset.extras.imagemetahub_data`. Both include the complete workflow,
+prompt API, generation parameters, telemetry, tags, notes, project data, and
+available geometry information. ComfyUI's `--disable-metadata` disables both
+the sidecar and embedded payload.
 
 ### MetaHub Input Bridge
 

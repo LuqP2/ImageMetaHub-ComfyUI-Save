@@ -536,7 +536,7 @@ def extract_workflow_attribution(workflow_json: dict, save_node_id: Optional[str
                 continue
             candidates = [node]
             break
-        if node.get("type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode") or node.get("class_type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode"):
+        if node.get("type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode", "MetaHubSave3DModel") or node.get("class_type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode", "MetaHubSave3DModel"):
             candidates.append(node)
 
     if len(candidates) != 1:

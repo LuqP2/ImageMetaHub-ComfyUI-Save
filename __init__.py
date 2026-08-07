@@ -7,11 +7,13 @@ try:
     from .metahub_input_node import MetaHubInputNode
     from .metahub_save_node import MetaHubSaveImage, MetaHubSaveNode
     from .metahub_save_video_node import MetaHubSaveVideoNode
+    from .metahub_save_3d_node import MetaHubSave3DModel
     from .timer_node import MetaHubTimerNode
 except ImportError:
     from metahub_input_node import MetaHubInputNode
     from metahub_save_node import MetaHubSaveImage, MetaHubSaveNode
     from metahub_save_video_node import MetaHubSaveVideoNode
+    from metahub_save_3d_node import MetaHubSave3DModel
     from timer_node import MetaHubTimerNode
 
 NODE_CLASS_MAPPINGS = {
@@ -19,7 +21,8 @@ NODE_CLASS_MAPPINGS = {
     "MetaHubSaveImage": MetaHubSaveImage,
     "MetaHubSaveNode": MetaHubSaveNode,
     "MetaHubSaveVideoNode": MetaHubSaveVideoNode,
-    "MetaHubTimerNode": MetaHubTimerNode
+    "MetaHubTimerNode": MetaHubTimerNode,
+    "MetaHubSave3DModel": MetaHubSave3DModel
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -27,7 +30,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MetaHubSaveImage": "MetaHub Save Image",
     "MetaHubSaveNode": "MetaHub Save Image Advanced",
     "MetaHubSaveVideoNode": "MetaHub Save Video",
-    "MetaHubTimerNode": "MetaHub Timer"
+    "MetaHubTimerNode": "MetaHub Timer",
+    "MetaHubSave3DModel": "MetaHub Save 3D Model"
 }
 
 WEB_DIRECTORY = "./js"
