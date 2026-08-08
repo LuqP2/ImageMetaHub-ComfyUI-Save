@@ -302,6 +302,8 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
     imh = build_imh_metadata(params, workflow_json)
 
     assert imh["generator"] == "ComfyUI"
+    assert imh["engine"] == "ComfyUI"
+    assert imh["tools"] == ["Image MetaHub"]
     assert imh["workflow"] == workflow_json["workflow"]
     assert imh["prompt_api"] == workflow_json["prompt"]
     assert imh["generation_type"] == "img2img"
@@ -453,6 +455,8 @@ def test_save_png_with_metadata_sanitizes_only_parameters_chunk(tmp_path):
     assert json.loads(text["imagemetahub_data"])["prompt"] == "McDonald\u2019s \u201cquote\u201d"
     assert json.loads(text["workflow"])["nodes"][0]["title"] == "McDonald\u2019s \u201cquote\u201d"
     assert json.loads(text["prompt"])["1"]["inputs"]["text"] == "McDonald\u2019s \u201cquote\u201d"
+    assert text["engine"] == "ComfyUI"
+    assert json.loads(text["tools"]) == ["Image MetaHub"]
 
 
 def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
@@ -479,6 +483,8 @@ def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
     chunk_text = _read_png_text_chunks(file_path)
     assert "workflow" in chunk_text
     assert "prompt" in chunk_text
+    assert chunk_text["engine"] == "ComfyUI"
+    assert json.loads(chunk_text["tools"]) == ["Image MetaHub"]
 
 
 def test_save_png_with_metadata_roundtrip_for_comfyui(tmp_path):
@@ -512,6 +518,8 @@ def test_save_png_with_metadata_roundtrip_for_comfyui(tmp_path):
     text_chunks = _read_png_text_chunks(file_path)
     assert "workflow" in text_chunks
     assert "prompt" in text_chunks
+    assert text_chunks["engine"] == "ComfyUI"
+    assert json.loads(text_chunks["tools"]) == ["Image MetaHub"]
 
     workflow_loaded = json.loads(text_chunks["workflow"])
     prompt_loaded = json.loads(text_chunks["prompt"])

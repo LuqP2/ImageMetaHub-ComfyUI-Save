@@ -8,7 +8,12 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image
 
-from metadata_utils import build_imh_metadata, ensure_metahub_save_node, save_png_with_metadata
+from metadata_utils import (
+    build_a1111_metadata,
+    build_imh_metadata,
+    ensure_metahub_save_node,
+    save_png_with_metadata,
+)
 
 
 def _read_png_text_chunks(path: Path) -> dict:
@@ -55,11 +60,15 @@ def main() -> int:
     imh_metadata = build_imh_metadata(params, workflow_json)
 
     image = Image.new("RGB", (2, 2), color=(0, 0, 0))
-    save_png_with_metadata(image, str(output), "params", imh_metadata)
+    save_png_with_metadata(image, str(output), build_a1111_metadata(params), imh_metadata)
 
     chunks = _read_png_text_chunks(output)
     if "workflow" not in chunks or "prompt" not in chunks:
         print("[FAIL] Missing tEXt workflow/prompt chunks")
+        return 1
+
+    if chunks.get("engine") != "ComfyUI" or json.loads(chunks.get("tools", "[]")) != ["Image MetaHub"]:
+        print("[FAIL] Missing engine/additional-tools attribution chunks")
         return 1
 
     try:
@@ -77,6 +86,7 @@ def main() -> int:
         return 1
 
     print("[OK] tEXt workflow/prompt present and MetaHubSaveNode preserved")
+    print("[OK] engine=ComfyUI and tools=[Image MetaHub]")
     print(f"[OK] Wrote {output}")
     return 0
 

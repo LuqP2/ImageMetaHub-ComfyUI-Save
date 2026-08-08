@@ -14,7 +14,9 @@ from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
-METAHUB_SAVE_NODE_VERSION = "1.1.9"
+METAHUB_SAVE_NODE_VERSION = "1.1.10"
+METAHUB_GENERATION_ENGINE = "ComfyUI"
+METAHUB_ADDITIONAL_TOOLS = ["Image MetaHub"]
 
 try:
     import piexif
@@ -420,6 +422,8 @@ def build_imh_metadata(params: dict, workflow_json: dict) -> dict:
     metadata = {
         # CRITICAL: Required field for IMH detection
         "generator": "ComfyUI",
+        "engine": METAHUB_GENERATION_ENGINE,
+        "tools": list(METAHUB_ADDITIONAL_TOOLS),
         "metadata_status": params.get("metadata_status", "partial"),
         "metadata_sources": _sanitize(params.get("metadata_sources", {})),
 
@@ -854,11 +858,13 @@ def inject_metadata_chunks(image_path: str, a1111_metadata: str, imh_metadata: d
 
 def save_png_with_metadata(image: Image.Image, image_path: str, a1111_metadata: str, imh_metadata: dict) -> None:
     """
-    Saves PNG image with A1111 tEXt and IMH iTXt metadata.
+    Saves PNG image with A1111, ComfyUI, IMH, and tool attribution metadata.
     """
     try:
         png_info = PngImagePlugin.PngInfo()
         png_info.add_text("parameters", make_civitai_safe_text(a1111_metadata))
+        png_info.add_text("engine", METAHUB_GENERATION_ENGINE)
+        png_info.add_text("tools", json.dumps(METAHUB_ADDITIONAL_TOOLS))
         imh_json = json.dumps(imh_metadata or {}, ensure_ascii=False)
         png_info.add_itxt("imagemetahub_data", imh_json)
         workflow_text = _serialize_metadata_json_ascii(imh_metadata.get("workflow"))
