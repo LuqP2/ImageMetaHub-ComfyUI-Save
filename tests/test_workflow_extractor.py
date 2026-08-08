@@ -55,6 +55,20 @@ def test_workflow_extractor_basic_prompt():
     assert data["vae_name"] == "model.safetensors"
 
 
+def test_workflow_extractor_traces_sampler_from_model_3d_input():
+    prompt = {
+        "1": {"class_type": "KSampler", "inputs": {"seed": 111}},
+        "2": {"class_type": "KSampler", "inputs": {"seed": 222}},
+        "3": {"class_type": "SyntheticMeshGenerator", "inputs": {"samples": ["2", 0]}},
+        "4": {"class_type": "MetaHubSave3DModel", "inputs": {"model_3d": ["3", 0]}},
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, _missing = extractor.extract(save_node_id="4")
+
+    assert data["seed"] == 222
+
+
 def test_workflow_extractor_lora_detection():
     prompt = {
         "1": {

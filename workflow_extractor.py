@@ -137,12 +137,13 @@ class WorkflowExtractor:
         if save_node_id:
             save_node = self._get_node(save_node_id)
             if save_node:
-                images_conn = save_node.get("inputs", {}).get("images")
-                start_node_id = self._get_connection_node_id(images_conn)
-                if start_node_id:
-                    sampler_id = self._find_sampler_from_images_source(start_node_id)
-                    if sampler_id:
-                        return sampler_id
+                inputs = save_node.get("inputs", {})
+                for input_name in ("images", "model_3d"):
+                    start_node_id = self._get_connection_node_id(inputs.get(input_name))
+                    if start_node_id:
+                        sampler_id = self._find_sampler_from_images_source(start_node_id)
+                        if sampler_id:
+                            return sampler_id
 
         return sampler_nodes[0]
 

@@ -189,7 +189,8 @@ def _write_glb(
         gltf["asset"]["extras"] = {"imagemetahub_data": metadata}
 
     materials: list[dict] = []
-    if texture_bytes and uv_array is not None:
+    has_embedded_texture = bool(texture_bytes and uv_array is not None)
+    if has_embedded_texture:
         texture_view = append_buffer(texture_bytes)
         gltf["images"] = [{"bufferView": texture_view, "mimeType": "image/png"}]
         gltf["samplers"] = [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]
@@ -231,7 +232,7 @@ def _write_glb(
         "vertexCount": int(len(positions)),
         "faceCount": int(len(indices) // 3),
         "materialCount": len(materials),
-        "hasTextures": bool(texture_bytes),
+        "hasTextures": has_embedded_texture,
         "bounds": {"min": positions.min(axis=0).tolist(), "max": positions.max(axis=0).tolist()},
     }
 

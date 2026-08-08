@@ -76,6 +76,22 @@ def test_disable_metadata_writes_model_without_sidecar_or_extras(tmp_path, monke
     assert "extras" not in _read_glb_json(model_path)["asset"]
 
 
+def test_texture_without_usable_uvs_is_not_reported_as_embedded(tmp_path):
+    mesh = _mesh()
+
+    geometry = node3d._write_glb(
+        tmp_path / "no-uvs.glb",
+        mesh.vertices[0],
+        mesh.faces[0],
+        {},
+        texture=mesh.texture[0],
+    )
+    gltf = _read_glb_json(tmp_path / "no-uvs.glb")
+
+    assert geometry["hasTextures"] is False
+    assert "textures" not in gltf
+
+
 def test_file3d_preserves_received_format_and_writes_sidecar(tmp_path, monkeypatch):
     class FakeFile3D:
         format = "obj"
