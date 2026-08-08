@@ -1,28 +1,50 @@
 name: Publish to Comfy registry
+
+# Publishes this node to the ComfyUI Registry using Comfy-Org/publish-node-action.
+#
+# Security notes:
+# - Trigger is intentionally push-to-main (paths: pyproject.toml) or manual
+#   workflow_dispatch ONLY. Never pull_request_target: that trigger runs with
+#   this repo's secrets against a PR head from a fork, which would hand
+#   REGISTRY_ACCESS_TOKEN to any third-party PR author. Do not add it.
+# - REGISTRY_ACCESS_TOKEN is passed only as the action's declared input; it is
+#   never echoed, printed, or exported to a shell step. GitHub Actions masks
+#   the literal secret value in all logs regardless.
+# - GITHUB_TOKEN permissions are minimal: read-only, and only what
+#   actions/checkout needs to fetch the repo. The publish step itself does not
+#   use GITHUB_TOKEN at all — it authenticates to the Registry solely with
+#   REGISTRY_ACCESS_TOKEN.
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
-      - master
     paths:
       - "pyproject.toml"
+  workflow_dispatch: {}
 
 permissions:
-  issues: write
+  contents: read
+
+concurrency:
+  group: publish-to-registry
+  cancel-in-progress: false
 
 jobs:
   publish-node:
     name: Publish Custom Node to registry
     runs-on: ubuntu-latest
+    # Belt-and-suspenders: even if this workflow file were ever present on a
+    # fork, publishing only ever runs in the canonical repo.
     if: ${{ github.repository_owner == 'LuqP2' }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           submodules: true
+
       - name: Publish Custom Node
         uses: Comfy-Org/publish-node-action@v1
         with:
-          ## Add your own personal access token to your Github Repository secrets and reference it here.
+          # Configure this once in Settings -> Secrets and variables -> Actions.
+          # Never place the token value directly in this file.
           personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
