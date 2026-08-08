@@ -1,0 +1,69 @@
+name: Registry Metrics Snapshot
+
+# Daily snapshot of this node's public ComfyUI Registry metrics
+# (https://api.comfy.org/nodes/imagemetahub-comfyui-save), appended
+# append-only to metrics/registry-history.jsonl and committed back to main.
+#
+# No external service, no paid dependency, no secret required.
+on:
+  schedule:
+    # 06:17 UTC daily. Off-the-hour minute to avoid the top-of-hour scheduler crunch.
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+# Minimal token permissions: only what's needed to commit the snapshot back.
+permissions:
+  contents: write
+
+# Avoid overlapping snapshot commits if a manual run and the cron overlap.
+concurrency:
+  group: registry-metrics-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: Fetch and commit registry snapshot
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'LuqP2' }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch registry metrics and append snapshot
+        run: python scripts/registry_metrics_snapshot.py
+
+      - name: Commit snapshot
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add metrics/registry-history.jsonl
+          if git diff --cached --quiet -- metrics/registry-history.jsonl; then
+            echo "No new snapshot data to commit."
+            exit 0
+          fi
+
+          # [skip ci] prevents this bot commit from triggering other push-based
+          # workflows (e.g. the registry publish workflow) in this repo.
+          git commit -m "chore(metrics): registry snapshot $(date -u +%Y-%m-%d) [skip ci]"
+
+          # Guard against a rare race with another push to main landing
+          # between checkout and push.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt), rebasing onto latest main..."
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "::error::Failed to push registry snapshot after 3 attempts."
+          exit 1
