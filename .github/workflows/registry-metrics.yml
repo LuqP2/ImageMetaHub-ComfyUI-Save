@@ -45,12 +45,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet -- metrics/registry-history.jsonl; then
+          git add metrics/registry-history.jsonl
+          if git diff --cached --quiet -- metrics/registry-history.jsonl; then
             echo "No new snapshot data to commit."
             exit 0
           fi
 
-          git add metrics/registry-history.jsonl
           # [skip ci] prevents this bot commit from triggering other push-based
           # workflows (e.g. the registry publish workflow) in this repo.
           git commit -m "chore(metrics): registry snapshot $(date -u +%Y-%m-%d) [skip ci]"
