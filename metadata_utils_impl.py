@@ -614,10 +614,10 @@ def _serialize_metadata_json_ascii(value: Any) -> Optional[str]:
 
 def build_comfyui_xmp_packet(imh_metadata: dict) -> Optional[bytes]:
     workflow_text, prompt_text = _get_workflow_prompt_texts(imh_metadata)
-    if not workflow_text and not prompt_text:
-        return None
-
-    fields = []
+    fields = [
+        f"<comfyui:engine>{xml_escape(METAHUB_GENERATION_ENGINE)}</comfyui:engine>",
+        f"<comfyui:tools>{xml_escape(json.dumps(METAHUB_ADDITIONAL_TOOLS))}</comfyui:tools>",
+    ]
     if workflow_text:
         fields.append(f"<comfyui:workflow>{xml_escape(workflow_text)}</comfyui:workflow>")
     if prompt_text:
@@ -899,6 +899,25 @@ def _build_exif_bytes(a1111_metadata: str, imh_metadata: dict) -> Optional[bytes
         return None
 
 
+def _inject_jpeg_xmp(image_path: str, xmp_bytes: bytes) -> bool:
+    try:
+        xmp_payload = b"http://ns.adobe.com/xap/1.0/\x00" + xmp_bytes
+        segment_length = len(xmp_payload) + 2
+        if segment_length > 0xFFFF:
+            return False
+
+        path = Path(image_path)
+        jpeg_data = path.read_bytes()
+        if not jpeg_data.startswith(b"\xff\xd8"):
+            return False
+
+        xmp_segment = b"\xff\xe1" + segment_length.to_bytes(2, "big") + xmp_payload
+        path.write_bytes(jpeg_data[:2] + xmp_segment + jpeg_data[2:])
+        return True
+    except Exception:
+        return False
+
+
 def save_jpeg_with_metadata(
     image: Image.Image,
     image_path: str,
@@ -919,16 +938,9 @@ def save_jpeg_with_metadata(
             save_kwargs["exif"] = exif_bytes
         elif a1111_metadata:
             save_kwargs["comment"] = make_civitai_safe_text(a1111_metadata).encode("utf-8", errors="replace")
-        if xmp_bytes:
-            save_kwargs["xmp"] = xmp_bytes
-        try:
-            image.save(image_path, **save_kwargs)
-        except TypeError:
-            if "xmp" in save_kwargs:
-                save_kwargs.pop("xmp", None)
-                image.save(image_path, **save_kwargs)
-            else:
-                raise
+        image.save(image_path, **save_kwargs)
+        if xmp_bytes and not _inject_jpeg_xmp(image_path, xmp_bytes):
+            print(f"[MetaHub] Warning: JPEG XMP metadata could not be embedded in {image_path}")
     except Exception as e:
         print(f"[MetaHub] Warning: JPEG metadata save failed for {image_path}: {e}")
         image.save(image_path, "JPEG", quality=quality)

@@ -28,16 +28,16 @@ The workflow and prompt payloads are preserved and the active save node is rewri
 
 ## Metadata contract
 
-New PNG outputs add two generic `tEXt` chunks:
+New outputs expose two generic metadata fields: PNG uses `tEXt` chunks, while JPEG and WebP use XMP properties:
 
 ```text
 engine = ComfyUI
 tools = ["Image MetaHub"]
 ```
 
-`tools` is a JSON array, not a delimiter-based string. This keeps engine attribution semantically distinct from additional creation, processing, editing, or saving tools. It also survives `ExifReader` independently of which generation parser wins.
+`tools` is a JSON array, not a delimiter-based string. This keeps engine attribution semantically distinct from additional creation, processing, editing, or saving tools. The fields survive `ExifReader` independently of which generation parser wins.
 
-The same values are included in `imagemetahub_data` for MetaHub consumers, while the separate chunks are the upstream interchange contract. Existing `parameters`, `workflow`, `prompt`, and `imagemetahub_data` fields are unchanged.
+The same values are included in `imagemetahub_data` for MetaHub consumers, while the separate PNG/XMP fields are the upstream interchange contract. Existing `parameters`, `workflow`, `prompt`, and `imagemetahub_data` fields are unchanged.
 
 ## Upstream behavior
 

@@ -6,6 +6,7 @@ import copy
 
 from metadata_utils import (
     build_a1111_metadata,
+    build_comfyui_xmp_packet,
     build_imh_metadata,
     build_metadata_sources,
     build_metadata_status,
@@ -18,7 +19,9 @@ from metadata_utils import (
     get_workflow_json,
     make_civitai_safe_text,
     resolve_filename_pattern_path,
+    save_jpeg_with_metadata,
     save_png_with_metadata,
+    save_webp_with_metadata,
     build_ui_preview,
 )
 from PIL import Image
@@ -61,6 +64,28 @@ def test_build_ui_preview_exposes_absolute_paths_for_image_metahub(tmp_path):
 def _save_simple_png(path: Path) -> None:
     image = Image.new("RGB", (2, 2), color=(0, 0, 0))
     image.save(path, "PNG")
+
+
+def test_build_comfyui_xmp_packet_includes_tool_attribution():
+    packet = build_comfyui_xmp_packet({})
+
+    assert packet is not None
+    assert b"<comfyui:engine>ComfyUI</comfyui:engine>" in packet
+    assert b'<comfyui:tools>["Image MetaHub"]</comfyui:tools>' in packet
+
+
+def test_jpeg_and_webp_saves_embed_tool_attribution_xmp(tmp_path):
+    image = Image.new("RGB", (2, 2), color=(0, 0, 0))
+    outputs = [
+        (tmp_path / "attribution.jpg", save_jpeg_with_metadata),
+        (tmp_path / "attribution.webp", save_webp_with_metadata),
+    ]
+
+    for path, save in outputs:
+        save(image, str(path), 95, "params", {})
+        data = path.read_bytes()
+        assert b"<comfyui:engine>ComfyUI</comfyui:engine>" in data
+        assert b'<comfyui:tools>["Image MetaHub"]</comfyui:tools>' in data
 
 
 def test_output_path_relative_resolves_under_comfy_output(tmp_path, monkeypatch):
