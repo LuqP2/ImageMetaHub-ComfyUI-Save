@@ -69,6 +69,34 @@ def test_workflow_extractor_traces_sampler_from_model_3d_input():
     assert data["seed"] == 222
 
 
+def test_workflow_extractor_traces_source_image_from_model_3d_input():
+    prompt = {
+        "1": {
+            "class_type": "LoadImage",
+            "inputs": {"image": "inputs/source.png"},
+        },
+        "2": {
+            "class_type": "SyntheticImageToMesh",
+            "inputs": {"image": ["1", 0]},
+        },
+        "3": {
+            "class_type": "MetaHubSave3DModel",
+            "inputs": {"model_3d": ["2", 0]},
+        },
+    }
+
+    extractor = WorkflowExtractor(prompt)
+    data, _missing = extractor.extract(save_node_id="3")
+
+    assert data["generation_type"] == "image2model3d"
+    assert data["source_image"] == {
+        "fileName": "source.png",
+        "relativePath": "inputs/source.png",
+        "nodeId": "1",
+        "nodeType": "LoadImage",
+    }
+
+
 def test_workflow_extractor_lora_detection():
     prompt = {
         "1": {

@@ -14,6 +14,66 @@ const CTA_WIDGET_NAMES = new Set([
     "Open in Image MetaHub",
     "Get Image MetaHub",
 ]);
+const METAHUB_SAVE_3D_CLASS = "MetaHubSave3DModel";
+const COMFY_SAVE_3D_EXTENSION = "Comfy.SaveGLB";
+
+function addNative3DPreviewInput(nodeData) {
+    if (nodeData.name !== METAHUB_SAVE_3D_CLASS) {
+        return;
+    }
+
+    nodeData.input ??= {};
+    nodeData.input.required ??= {};
+    nodeData.input.required.image = ["PREVIEW_3D"];
+}
+
+async function initializeNative3DPreview(node) {
+    if (
+        node.comfyClass !== METAHUB_SAVE_3D_CLASS ||
+        node.__imageMetaHubNative3DPreviewInitialized
+    ) {
+        return;
+    }
+
+    const save3DExtension = app.extensions?.find(
+        (extension) => extension.name === COMFY_SAVE_3D_EXTENSION
+    );
+    if (typeof save3DExtension?.nodeCreated !== "function") {
+        return;
+    }
+
+    const nodeConstructor = node.constructor;
+    const ownConstructorDescriptor = Object.getOwnPropertyDescriptor(node, "constructor");
+    const saveGLBConstructor = new Proxy(nodeConstructor, {
+        get(target, property, receiver) {
+            if (property === "comfyClass") {
+                return "SaveGLB";
+            }
+            return Reflect.get(target, property, receiver);
+        },
+    });
+    node.__imageMetaHubNative3DPreviewInitialized = true;
+
+    try {
+        // ComfyUI's native viewer is intentionally restricted to SaveGLB.
+        // Reuse its initializer with the real MetaHub node instance, then
+        // restore the class before workflow serialization can observe it.
+        Object.defineProperty(node, "constructor", {
+            configurable: true,
+            value: saveGLBConstructor,
+        });
+        await save3DExtension.nodeCreated(node, app);
+    } catch (error) {
+        node.__imageMetaHubNative3DPreviewInitialized = false;
+        console.warn("Image MetaHub: native 3D preview initialization failed", error);
+    } finally {
+        if (ownConstructorDescriptor) {
+            Object.defineProperty(node, "constructor", ownConstructorDescriptor);
+        } else {
+            delete node.constructor;
+        }
+    }
+}
 
 function buildDeepLink(node) {
     const savedPath = node.__imageMetaHubLastSavedPath;
@@ -185,6 +245,8 @@ app.registerExtension({
             return;
         }
 
+        addNative3DPreviewInput(nodeData);
+
         const originalOnExecuted = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             originalOnExecuted?.apply(this, arguments);
@@ -193,6 +255,13 @@ app.registerExtension({
     },
 
     async nodeCreated(node) {
+        await initializeNative3DPreview(node);
         syncMetaHubCTA(node);
+        if (node.comfyClass === METAHUB_SAVE_3D_CLASS) {
+            node.setSize?.([
+                Math.max(node.size?.[0] ?? 0, 400),
+                Math.max(node.size?.[1] ?? 0, 700),
+            ]);
+        }
     },
 });
