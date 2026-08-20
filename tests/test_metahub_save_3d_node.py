@@ -92,6 +92,31 @@ def test_texture_without_usable_uvs_is_not_reported_as_embedded(tmp_path):
     assert "textures" not in gltf
 
 
+def test_build_metadata_preserves_zero_denoise(monkeypatch):
+    class FakeExtractor:
+        def __init__(self, _prompt):
+            pass
+
+        def extract(self, save_node_id):
+            assert save_node_id == "3"
+            return {"denoise": 0.0, "lora_list": []}, set()
+
+    monkeypatch.setattr(node3d, "WorkflowExtractor", FakeExtractor)
+    monkeypatch.setattr(node3d.utils, "get_workflow_json", lambda _info: {})
+    monkeypatch.setattr(node3d.utils, "ensure_prompt_in_workflow", lambda workflow, _prompt: workflow)
+    monkeypatch.setattr(node3d.utils, "ensure_metahub_save_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(node3d.utils, "extract_loras_from_workflow", lambda _workflow: [])
+    monkeypatch.setattr(node3d.utils, "collect_gpu_metrics", lambda: {})
+    monkeypatch.setattr(node3d.utils, "collect_version_info", lambda: {})
+    monkeypatch.setattr(node3d.utils, "build_metadata_sources", lambda *args: {})
+    monkeypatch.setattr(node3d.utils, "extract_workflow_attribution", lambda *args: {})
+    monkeypatch.setattr(node3d.utils, "build_imh_metadata", lambda params, _workflow: params)
+
+    metadata = node3d._build_metadata({}, {}, "3", "", "", "", None)
+
+    assert metadata["denoise"] == 0.0
+
+
 def test_textured_unlit_mesh_preserves_unlit_and_transparency(tmp_path):
     mesh = _mesh()
     mesh.unlit = True

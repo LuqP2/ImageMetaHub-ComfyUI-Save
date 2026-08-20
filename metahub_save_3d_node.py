@@ -313,6 +313,7 @@ def _build_metadata(
     loras = extracted.get("lora_list") or utils.extract_loras_from_workflow(workflow_json)
     model_name = extracted.get("model_name") or ""
     steps = int(extracted.get("steps") or 0)
+    denoise = extracted.get("denoise")
     elapsed = time.time() - generation_time_override if generation_time_override and generation_time_override > 0 else 0.0
     generation_time_ms = int(elapsed * 1000) if elapsed > 0 else None
     gpu = utils.collect_gpu_metrics()
@@ -330,7 +331,7 @@ def _build_metadata(
         "model_name": model_name,
         "model_hash": utils.calculate_model_hash(model_name, model_type="checkpoint") if model_name else "",
         "vae_name": extracted.get("vae_name") or "",
-        "denoise": float(extracted.get("denoise") or 1.0),
+        "denoise": float(denoise) if denoise is not None else 1.0,
         "width": 0,
         "height": 0,
         "lora_list": loras,
