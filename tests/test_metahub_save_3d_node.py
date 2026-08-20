@@ -92,6 +92,29 @@ def test_texture_without_usable_uvs_is_not_reported_as_embedded(tmp_path):
     assert "textures" not in gltf
 
 
+def test_textured_unlit_mesh_preserves_unlit_and_transparency(tmp_path):
+    mesh = _mesh()
+    mesh.unlit = True
+    mesh.texture = np.ones((1, 2, 2, 4), dtype=np.float32)
+    mesh.texture[0, 0, 0, 3] = 0.25
+
+    node3d._write_glb(
+        tmp_path / "textured-unlit.glb",
+        mesh.vertices[0],
+        mesh.faces[0],
+        {},
+        uvs=mesh.uvs[0],
+        texture=mesh.texture[0],
+        unlit=mesh.unlit,
+    )
+    gltf = _read_glb_json(tmp_path / "textured-unlit.glb")
+    material = gltf["materials"][0]
+
+    assert material["extensions"] == {"KHR_materials_unlit": {}}
+    assert gltf["extensionsUsed"] == ["KHR_materials_unlit"]
+    assert material["alphaMode"] == "BLEND"
+
+
 def test_file3d_preserves_received_format_and_writes_sidecar(tmp_path, monkeypatch):
     class FakeFile3D:
         format = "obj"

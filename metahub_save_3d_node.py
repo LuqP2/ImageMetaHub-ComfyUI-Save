@@ -120,10 +120,14 @@ def _write_glb(
         uv_array = None
 
     texture_bytes = b""
+    texture_has_transparency = False
     if texture is not None:
         texture_array = _tensor_numpy(texture, np.float32)
         texture_array = np.clip(texture_array * 255.0, 0, 255).astype(np.uint8)
         if texture_array.ndim == 3 and texture_array.shape[-1] in (3, 4):
+            texture_has_transparency = (
+                texture_array.shape[-1] == 4 and bool(np.any(texture_array[..., 3] < 255))
+            )
             buffer = BytesIO()
             Image.fromarray(texture_array, mode="RGBA" if texture_array.shape[-1] == 4 else "RGB").save(buffer, "PNG")
             texture_bytes = buffer.getvalue()
@@ -195,14 +199,20 @@ def _write_glb(
         gltf["images"] = [{"bufferView": texture_view, "mimeType": "image/png"}]
         gltf["samplers"] = [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]
         gltf["textures"] = [{"source": 0, "sampler": 0}]
-        materials.append({
+        material = {
             "pbrMetallicRoughness": {
                 "baseColorTexture": {"index": 0, "texCoord": 0},
                 "metallicFactor": 0.0,
                 "roughnessFactor": 1.0,
             },
             "doubleSided": True,
-        })
+        }
+        if texture_has_transparency:
+            material["alphaMode"] = "BLEND"
+        if unlit:
+            material["extensions"] = {"KHR_materials_unlit": {}}
+            gltf["extensionsUsed"] = ["KHR_materials_unlit"]
+        materials.append(material)
         primitive["material"] = 0
     elif unlit:
         materials.append({

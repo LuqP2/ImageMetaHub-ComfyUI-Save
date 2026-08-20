@@ -494,14 +494,18 @@ class WorkflowExtractor:
         save_node = self._get_node(save_node_id)
         if not save_node:
             return None
-        images_conn = save_node.get("inputs", {}).get("images")
-        start_node_id = self._get_connection_node_id(images_conn)
-        if not start_node_id:
-            return None
-        return self._bfs_upstream(
-            [start_node_id],
-            lambda n: self._class_type(n) in self.VAE_DECODE_NODES,
-        )
+        inputs = save_node.get("inputs", {})
+        for input_name in ("images", "model_3d"):
+            start_node_id = self._get_connection_node_id(inputs.get(input_name))
+            if not start_node_id:
+                continue
+            vae_decode_id = self._bfs_upstream(
+                [start_node_id],
+                lambda n: self._class_type(n) in self.VAE_DECODE_NODES,
+            )
+            if vae_decode_id:
+                return vae_decode_id
+        return None
 
     def _find_nodes_by_type(self, types: List[str]) -> List[str]:
         matched = []
