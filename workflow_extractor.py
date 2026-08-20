@@ -123,7 +123,7 @@ class WorkflowExtractor:
         elif has_lora_nodes:
             missing.add("loras")
 
-        lineage = self.extract_lineage(sampler_node_id)
+        lineage = self.extract_model_3d_lineage(save_node_id) or self.extract_lineage(sampler_node_id)
         if lineage:
             data.update(lineage)
 
@@ -137,12 +137,13 @@ class WorkflowExtractor:
         if save_node_id:
             save_node = self._get_node(save_node_id)
             if save_node:
-                images_conn = save_node.get("inputs", {}).get("images")
-                start_node_id = self._get_connection_node_id(images_conn)
-                if start_node_id:
-                    sampler_id = self._find_sampler_from_images_source(start_node_id)
-                    if sampler_id:
-                        return sampler_id
+                inputs = save_node.get("inputs", {})
+                for input_name in ("images", "model_3d"):
+                    start_node_id = self._get_connection_node_id(inputs.get(input_name))
+                    if start_node_id:
+                        sampler_id = self._find_sampler_from_images_source(start_node_id)
+                        if sampler_id:
+                            return sampler_id
 
         return sampler_nodes[0]
 
@@ -412,6 +413,58 @@ class WorkflowExtractor:
             "source_image": source_image,
         }
 
+    def extract_model_3d_lineage(self, save_node_id: Optional[str]) -> Dict[str, Any]:
+        if not save_node_id:
+            return {}
+
+        save_node = self._get_node(save_node_id)
+        if not save_node:
+            return {}
+
+        class_type = self._class_type(save_node).lower().replace("_", "").replace(" ", "")
+        if "save3d" not in class_type and "saveglb" not in class_type:
+            return {}
+
+        inputs = save_node.get("inputs", {})
+        model_conn = inputs.get("model_3d") or inputs.get("mesh") or inputs.get("model")
+        start_node_id = self._get_connection_node_id(model_conn)
+        if not start_node_id:
+            return {}
+
+        queue = [start_node_id]
+        visited: Set[str] = set()
+        while queue:
+            current_id = queue.pop(0)
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+
+            current = self._get_node(current_id)
+            if not current:
+                continue
+
+            current_type = self._class_type(current)
+            if current_type in self.LOAD_IMAGE_NODES or current_type.lower() == "loadimage":
+                image_value = current.get("inputs", {}).get("image")
+                if isinstance(image_value, str) and image_value.strip():
+                    normalized = image_value.replace("\\", "/")
+                    return {
+                        "generation_type": "image2model3d",
+                        "source_image": {
+                            "fileName": normalized.split("/")[-1],
+                            "relativePath": normalized,
+                            "nodeId": current_id,
+                            "nodeType": current_type,
+                        },
+                    }
+
+            for input_value in current.get("inputs", {}).values():
+                upstream_id = self._get_connection_node_id(input_value)
+                if upstream_id and upstream_id not in visited:
+                    queue.append(upstream_id)
+
+        return {}
+
     def _find_sampler_from_images_source(self, start_node_id: str) -> Optional[str]:
         start_node = self._get_node(start_node_id)
         if not start_node:
@@ -441,14 +494,18 @@ class WorkflowExtractor:
         save_node = self._get_node(save_node_id)
         if not save_node:
             return None
-        images_conn = save_node.get("inputs", {}).get("images")
-        start_node_id = self._get_connection_node_id(images_conn)
-        if not start_node_id:
-            return None
-        return self._bfs_upstream(
-            [start_node_id],
-            lambda n: self._class_type(n) in self.VAE_DECODE_NODES,
-        )
+        inputs = save_node.get("inputs", {})
+        for input_name in ("images", "model_3d"):
+            start_node_id = self._get_connection_node_id(inputs.get(input_name))
+            if not start_node_id:
+                continue
+            vae_decode_id = self._bfs_upstream(
+                [start_node_id],
+                lambda n: self._class_type(n) in self.VAE_DECODE_NODES,
+            )
+            if vae_decode_id:
+                return vae_decode_id
+        return None
 
     def _find_nodes_by_type(self, types: List[str]) -> List[str]:
         matched = []

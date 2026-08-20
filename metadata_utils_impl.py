@@ -14,7 +14,7 @@ from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
-METAHUB_SAVE_NODE_VERSION = "1.1.9"
+METAHUB_SAVE_NODE_VERSION = "1.2.0"
 
 try:
     import piexif
@@ -536,7 +536,7 @@ def extract_workflow_attribution(workflow_json: dict, save_node_id: Optional[str
                 continue
             candidates = [node]
             break
-        if node.get("type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode") or node.get("class_type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode"):
+        if node.get("type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode", "MetaHubSave3DModel") or node.get("class_type") in ("MetaHubSaveImage", "MetaHubSaveNode", "MetaHubSaveVideoNode", "MetaHubSave3DModel"):
             candidates.append(node)
 
     if len(candidates) != 1:
