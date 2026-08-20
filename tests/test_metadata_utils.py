@@ -6,6 +6,7 @@ import copy
 
 from metadata_utils import (
     build_a1111_metadata,
+    build_comfyui_xmp_packet,
     build_imh_metadata,
     build_metadata_sources,
     build_metadata_status,
@@ -18,7 +19,9 @@ from metadata_utils import (
     get_workflow_json,
     make_civitai_safe_text,
     resolve_filename_pattern_path,
+    save_jpeg_with_metadata,
     save_png_with_metadata,
+    save_webp_with_metadata,
     build_ui_preview,
 )
 from PIL import Image
@@ -61,6 +64,28 @@ def test_build_ui_preview_exposes_absolute_paths_for_image_metahub(tmp_path):
 def _save_simple_png(path: Path) -> None:
     image = Image.new("RGB", (2, 2), color=(0, 0, 0))
     image.save(path, "PNG")
+
+
+def test_build_comfyui_xmp_packet_includes_tool_attribution():
+    packet = build_comfyui_xmp_packet({})
+
+    assert packet is not None
+    assert b"<comfyui:engine>ComfyUI</comfyui:engine>" in packet
+    assert b'<comfyui:tools>["Image MetaHub"]</comfyui:tools>' in packet
+
+
+def test_jpeg_and_webp_saves_embed_tool_attribution_xmp(tmp_path):
+    image = Image.new("RGB", (2, 2), color=(0, 0, 0))
+    outputs = [
+        (tmp_path / "attribution.jpg", save_jpeg_with_metadata),
+        (tmp_path / "attribution.webp", save_webp_with_metadata),
+    ]
+
+    for path, save in outputs:
+        save(image, str(path), 95, "params", {})
+        data = path.read_bytes()
+        assert b"<comfyui:engine>ComfyUI</comfyui:engine>" in data
+        assert b'<comfyui:tools>["Image MetaHub"]</comfyui:tools>' in data
 
 
 def test_output_path_relative_resolves_under_comfy_output(tmp_path, monkeypatch):
@@ -302,6 +327,8 @@ def test_build_imh_metadata_includes_workflow_and_prompt():
     imh = build_imh_metadata(params, workflow_json)
 
     assert imh["generator"] == "ComfyUI"
+    assert imh["engine"] == "ComfyUI"
+    assert imh["tools"] == ["Image MetaHub"]
     assert imh["workflow"] == workflow_json["workflow"]
     assert imh["prompt_api"] == workflow_json["prompt"]
     assert imh["generation_type"] == "img2img"
@@ -334,7 +361,7 @@ def test_extract_workflow_attribution_from_node_properties():
 
     assert attribution["token"] == "imhcrt_br_creator_workflow_v1_random"
     assert attribution["source"] == "metahub_save_node"
-    assert attribution["node_version"] == "1.1.9"
+    assert attribution["node_version"] == "1.1.10"
 
 
 def test_build_imh_metadata_includes_attribution_without_a1111_parameters():
@@ -453,6 +480,8 @@ def test_save_png_with_metadata_sanitizes_only_parameters_chunk(tmp_path):
     assert json.loads(text["imagemetahub_data"])["prompt"] == "McDonald\u2019s \u201cquote\u201d"
     assert json.loads(text["workflow"])["nodes"][0]["title"] == "McDonald\u2019s \u201cquote\u201d"
     assert json.loads(text["prompt"])["1"]["inputs"]["text"] == "McDonald\u2019s \u201cquote\u201d"
+    assert text["engine"] == "ComfyUI"
+    assert json.loads(text["tools"]) == ["Image MetaHub"]
 
 
 def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
@@ -479,6 +508,8 @@ def test_save_png_with_metadata_writes_workflow_prompt(tmp_path):
     chunk_text = _read_png_text_chunks(file_path)
     assert "workflow" in chunk_text
     assert "prompt" in chunk_text
+    assert chunk_text["engine"] == "ComfyUI"
+    assert json.loads(chunk_text["tools"]) == ["Image MetaHub"]
 
 
 def test_save_png_with_metadata_roundtrip_for_comfyui(tmp_path):
@@ -512,6 +543,8 @@ def test_save_png_with_metadata_roundtrip_for_comfyui(tmp_path):
     text_chunks = _read_png_text_chunks(file_path)
     assert "workflow" in text_chunks
     assert "prompt" in text_chunks
+    assert text_chunks["engine"] == "ComfyUI"
+    assert json.loads(text_chunks["tools"]) == ["Image MetaHub"]
 
     workflow_loaded = json.loads(text_chunks["workflow"])
     prompt_loaded = json.loads(text_chunks["prompt"])
