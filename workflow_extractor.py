@@ -553,7 +553,7 @@ class WorkflowExtractor:
     def _get_clip_text(self, node: Dict[str, Any]) -> Optional[str]:
         inputs = node.get("inputs", {})
         text = self._get_literal_input(inputs, "text")
-        if text is not None and str(text).strip():
+        if text is not None and not isinstance(text, bool) and str(text).strip():
             return str(text)
         text_from_conn = self._resolve_string_from_connection(inputs.get("text"))
         if text_from_conn is not None:
@@ -592,6 +592,13 @@ class WorkflowExtractor:
         if self._is_prompt_encoder(class_type):
             return self._get_clip_text(node)
 
+        if "switch" in class_lower and "on_false" in inputs and "on_true" in inputs:
+            switch_value = self._resolve_boolean_input(inputs.get("switch"))
+            branch = "on_true" if switch_value is True else "on_false"
+            value = self._resolve_string_from_connection_with_visited(inputs.get(branch), visited)
+            if value is not None and value.strip():
+                return value
+
         if class_lower == "joinstrings" or "join strings" in class_lower:
             delimiter = self._get_literal_input(inputs, "delimiter")
             joiner = str(delimiter) if delimiter is not None else " "
@@ -606,7 +613,7 @@ class WorkflowExtractor:
 
         for key in ("text", "positive", "negative", "prompt", "string", "value"):
             value = self._get_literal_input(inputs, key)
-            if value is not None and str(value).strip():
+            if value is not None and not isinstance(value, bool) and str(value).strip():
                 return str(value)
 
         for key in ("positive", "text", "string1", "string2", "conditioning"):
@@ -620,6 +627,16 @@ class WorkflowExtractor:
                 return value
 
         return None
+
+    def _resolve_boolean_input(self, value: Any) -> Optional[bool]:
+        if isinstance(value, bool):
+            return value
+        node_id = self._get_connection_node_id(value)
+        if not node_id:
+            return None
+        node = self._get_node(node_id)
+        literal = node.get("inputs", {}).get("value") if node else None
+        return literal if isinstance(literal, bool) else None
 
     def _resolve_string_from_connection_with_visited(self, conn: Any, visited: Set[str]) -> Optional[str]:
         node_id = self._get_connection_node_id(conn)

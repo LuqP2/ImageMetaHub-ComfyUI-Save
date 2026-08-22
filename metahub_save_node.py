@@ -308,6 +308,13 @@ class MetaHubSaveNode:
                     return extracted_value
                 return default_value
 
+            def normalize_prompt_override(value):
+                if isinstance(value, bool):
+                    return None
+                if isinstance(value, str) and value.strip().lower() == "false":
+                    return None
+                return value
+
             def normalize_int(value, default_value):
                 try:
                     return int(value)
@@ -326,8 +333,10 @@ class MetaHubSaveNode:
             sampler_value = resolve_value(sampler_name, extracted.get("sampler_name"), "euler")
             scheduler_value = resolve_value(scheduler, extracted.get("scheduler"), "normal")
             model_name_value = resolve_value(model_name, extracted.get("model_name"), "")
-            positive_value = resolve_value(positive, extracted.get("positive"), "")
-            negative_value = resolve_value(negative, extracted.get("negative"), "")
+            positive_override = normalize_prompt_override(positive)
+            negative_override = normalize_prompt_override(negative)
+            positive_value = resolve_value(positive_override, extracted.get("positive"), "")
+            negative_value = resolve_value(negative_override, extracted.get("negative"), "")
             denoise_value = normalize_float(resolve_value(denoise, extracted.get("denoise"), 1.0), 1.0)
             vae_name_value = resolve_value(vae_name, extracted.get("vae_name"), "")
             metadata_fields = [
@@ -349,8 +358,8 @@ class MetaHubSaveNode:
                 "sampler_name": sampler_name,
                 "scheduler": scheduler,
                 "model_name": model_name,
-                "positive": positive,
-                "negative": negative,
+                "positive": positive_override,
+                "negative": negative_override,
                 "denoise": denoise,
                 "vae_name": vae_name,
             }
