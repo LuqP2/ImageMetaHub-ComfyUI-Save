@@ -479,3 +479,62 @@ def test_workflow_extractor_resolves_custom_advanced_sampler_chain():
     assert data["model_name"] == "jibMixZIT_v10.safetensors"
     assert data["vae_name"] == "diffusion_pytorch_model.safetensors"
     assert {"seed", "steps", "sampler_name", "scheduler", "denoise", "positive", "model_name", "vae_name"}.isdisjoint(missing)
+
+
+def test_workflow_extractor_follows_krea2_false_switch_to_prompt_text():
+    expected = "A studio portrait with dramatic directional lighting"
+    prompt = {
+        "67": {"class_type": "PrimitiveBoolean", "inputs": {"value": False}},
+        "70": {
+            "class_type": "ComfySwitchNode",
+            "inputs": {"switch": ["67", 0], "on_false": ["71", 0], "on_true": ["61", 0]},
+        },
+        "71": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": expected}},
+        "72": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 123,
+                "steps": 10,
+                "cfg": 1,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "positive": ["73", 0],
+            },
+        },
+        "73": {"class_type": "CLIPTextEncode", "inputs": {"text": ["70", 0]}},
+    }
+
+    extracted, missing = WorkflowExtractor(prompt).extract()
+
+    assert extracted["positive"] == expected
+    assert "positive" not in missing
+
+
+def test_workflow_extractor_preserves_empty_selected_switch_branch():
+    prompt = {
+        "1": {"class_type": "CLIPTextEncode", "inputs": {"text": "positive prompt"}},
+        "2": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "inactive negative prompt"}},
+        "3": {"class_type": "ConditioningZeroOut", "inputs": {}},
+        "4": {
+            "class_type": "ComfySwitchNode",
+            "inputs": {"switch": False, "on_false": ["3", 0], "on_true": ["2", 0]},
+        },
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": ["4", 0]}},
+        "6": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 123,
+                "steps": 10,
+                "cfg": 1,
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "positive": ["1", 0],
+                "negative": ["5", 0],
+            },
+        },
+    }
+
+    extracted, missing = WorkflowExtractor(prompt).extract()
+
+    assert extracted["negative"] == ""
+    assert "negative" not in missing
