@@ -596,7 +596,7 @@ class WorkflowExtractor:
             switch_value = self._resolve_boolean_input(inputs.get("switch"))
             branch = "on_true" if switch_value is True else "on_false"
             value = self._resolve_string_from_connection_with_visited(inputs.get(branch), visited)
-            if value is not None and value.strip():
+            if value is not None:
                 return value
 
         if class_lower == "joinstrings" or "join strings" in class_lower:
