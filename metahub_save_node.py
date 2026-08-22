@@ -311,8 +311,6 @@ class MetaHubSaveNode:
             def normalize_prompt_override(value):
                 if isinstance(value, bool):
                     return None
-                if isinstance(value, str) and value.strip().lower() == "false":
-                    return None
                 return value
 
             def normalize_int(value, default_value):
