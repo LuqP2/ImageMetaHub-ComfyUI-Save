@@ -31,8 +31,19 @@ def test_qwen_image_21_uses_distinct_conditioning_outputs():
     assert data["negative"] == ""
     assert "negative" not in missing
 
-    prompt["3"]["inputs"]["negative_prompt"] = ["7", 0]
+    prompt["3"]["inputs"]["negative_prompt"] = ["8", 0]
     prompt["7"] = {"class_type": "String Literal", "inputs": {"string": ""}}
+    prompt["8"] = {"class_type": "ComfySwitchNode", "inputs": {
+        "switch": False, "on_false": ["7", 0], "on_true": ["9", 0],
+    }}
+    prompt["9"] = {"class_type": "PrimitiveStringMultiline", "inputs": {
+        "value": "inactive negative",
+    }}
+    data, missing = WorkflowExtractor(prompt).extract(save_node_id="6")
+    assert data["negative"] == ""
+    assert "negative" not in missing
+
+    prompt["3"]["inputs"]["negative_prompt"] = ["7", 0]
     data, missing = WorkflowExtractor(prompt).extract(save_node_id="6")
     assert data["negative"] == ""
     assert "negative" not in missing

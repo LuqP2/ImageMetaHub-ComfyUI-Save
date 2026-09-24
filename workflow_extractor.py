@@ -615,6 +615,12 @@ class WorkflowExtractor:
         if class_type == "ConditioningZeroOut":
             return ""
 
+        if class_type in ("PrimitiveStringMultiline", "String Literal"):
+            for key in ("value", "string", "text"):
+                value = self._get_literal_input(inputs, key)
+                if isinstance(value, str):
+                    return value
+
         if self._is_prompt_encoder(class_type):
             return self._get_clip_text(node)
 
