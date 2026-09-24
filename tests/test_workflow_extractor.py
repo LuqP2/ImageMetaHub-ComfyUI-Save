@@ -49,6 +49,28 @@ def test_qwen_image_21_uses_distinct_conditioning_outputs():
     assert "negative" not in missing
 
 
+def test_qwen_image_21_prompts_stay_separate_through_cfg_guider():
+    prompt = {
+        "1": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "prompt": "positive text", "negative_prompt": "negative text",
+        }},
+        "2": {"class_type": "CFGGuider", "inputs": {
+            "positive": ["1", 0], "negative": ["1", 1], "cfg": 1,
+        }},
+        "3": {"class_type": "SamplerCustomAdvanced", "inputs": {
+            "guider": ["2", 0], "noise": ["4", 0], "sigmas": ["5", 0],
+        }},
+        "4": {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}},
+        "5": {"class_type": "BasicScheduler", "inputs": {"steps": 25}},
+    }
+
+    data, missing = WorkflowExtractor(prompt).extract()
+
+    assert data["positive"] == "positive text"
+    assert data["negative"] == "negative text"
+    assert "positive" not in missing and "negative" not in missing
+
+
 def test_workflow_extractor_basic_prompt():
     prompt = {
         "1": {

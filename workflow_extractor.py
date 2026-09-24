@@ -256,7 +256,15 @@ class WorkflowExtractor:
         negative_conn = inputs.get("negative") or inputs.get("negative_cond")
         positive = self._extract_text_from_connection(positive_conn)
         negative = self._extract_text_from_connection(negative_conn)
-        if positive is None:
+        guider_id = self._get_connection_node_id(inputs.get("guider"))
+        guider = self._get_node(guider_id)
+        guider_inputs = guider.get("inputs", {}) if guider else {}
+        if "positive" in guider_inputs or "negative" in guider_inputs:
+            if positive is None:
+                positive = self._extract_text_from_connection(guider_inputs.get("positive"))
+            if negative is None:
+                negative = self._extract_text_from_connection(guider_inputs.get("negative"))
+        elif positive is None:
             positive = self._extract_text_from_connection(inputs.get("guider"))
         if negative is None:
             negative = self._extract_text_from_connection(inputs.get("negative_conditioning"))
