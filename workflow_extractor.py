@@ -48,6 +48,7 @@ class WorkflowExtractor:
         "CLIPTextEncodeSDXLPlus",
         "CLIPTextEncodeSDXLRefiner",
         "CLIPTextEncodeSD3",
+        "TextEncodeQwenImage21",
     ]
 
     VAE_DECODE_NODES = [
@@ -518,24 +519,29 @@ class WorkflowExtractor:
         node_id = self._get_connection_node_id(conn)
         if not node_id:
             return None
-        return self._extract_text_from_node(node_id)
+        return self._extract_text_from_node(node_id, conn[1])
 
-    def _extract_text_from_node(self, start_node_id: str) -> Optional[str]:
+    def _extract_text_from_node(self, start_node_id: str, output_slot: int = 0) -> Optional[str]:
         texts: List[str] = []
-        queue = [start_node_id]
-        visited: Set[str] = set()
+        queue = [(start_node_id, output_slot)]
+        visited: Set[Tuple[str, int]] = set()
 
         while queue:
-            node_id = queue.pop(0)
-            if node_id in visited:
+            node_id, current_slot = queue.pop(0)
+            if (node_id, current_slot) in visited:
                 continue
-            visited.add(node_id)
+            visited.add((node_id, current_slot))
             node = self._get_node(node_id)
             if not node:
                 continue
             class_type = self._class_type(node)
             if class_type == "ConditioningZeroOut":
                 return ""
+            if class_type == "TextEncodeQwenImage21":
+                text = self._get_qwen_image_21_text(node, current_slot)
+                if text is not None:
+                    texts.append(text)
+                continue
             if self._is_prompt_encoder(class_type):
                 text = self._get_clip_text(node)
                 if text is not None:
@@ -543,11 +549,31 @@ class WorkflowExtractor:
                     continue
             for input_val in node.get("inputs", {}).values():
                 conn_id = self._get_connection_node_id(input_val)
-                if conn_id and conn_id not in visited:
-                    queue.append(conn_id)
+                if conn_id and (conn_id, input_val[1]) not in visited:
+                    queue.append((conn_id, input_val[1]))
 
         if texts:
             return "\n".join(texts)
+        return None
+
+    def _get_qwen_image_21_text(self, node: Dict[str, Any], output_slot: int) -> Optional[str]:
+        if output_slot not in (0, 1):
+            return None
+        key = "prompt" if output_slot == 0 else "negative_prompt"
+        inputs = node.get("inputs", {})
+        value = self._get_literal_input(inputs, key)
+        if isinstance(value, str):
+            return value
+        conn = inputs.get(key)
+        source_id = self._get_connection_node_id(conn)
+        if source_id:
+            source = self._get_node(source_id)
+            if source:
+                for source_key in ("text", "string", "value", "prompt", "negative_prompt"):
+                    source_value = self._get_literal_input(source.get("inputs", {}), source_key)
+                    if isinstance(source_value, str):
+                        return source_value
+            return self._resolve_string_from_connection(conn)
         return None
 
     def _get_clip_text(self, node: Dict[str, Any]) -> Optional[str]:
