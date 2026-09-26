@@ -1,6 +1,76 @@
 from workflow_extractor import WorkflowExtractor
 
 
+def test_qwen_image_21_uses_distinct_conditioning_outputs():
+    prompt = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "qwen_image_2.1.safetensors"}},
+        "2": {"class_type": "String Literal", "inputs": {"string": "linked positive"}},
+        "3": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "prompt": ["2", 0], "negative_prompt": "direct negative",
+        }},
+        "4": {"class_type": "KSampler", "inputs": {
+            "model": ["1", 0], "positive": ["3", 0], "negative": ["3", 1],
+            "seed": 42, "steps": 25, "cfg": 1,
+            "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+        }},
+        "5": {"class_type": "VAEDecode", "inputs": {"samples": ["4", 0]}},
+        "6": {"class_type": "MetaHubSaveNode", "inputs": {"images": ["5", 0]}},
+    }
+
+    data, missing = WorkflowExtractor(prompt).extract(save_node_id="6")
+
+    assert data["positive"] == "linked positive"
+    assert data["negative"] == "direct negative"
+    assert data["model_name"] == "qwen_image_2.1.safetensors"
+    assert (data["seed"], data["steps"], data["cfg"]) == (42, 25, 1.0)
+    assert (data["sampler_name"], data["scheduler"]) == ("euler", "simple")
+    assert "positive" not in missing and "negative" not in missing
+
+    prompt["3"]["inputs"]["negative_prompt"] = ""
+    data, missing = WorkflowExtractor(prompt).extract(save_node_id="6")
+    assert data["negative"] == ""
+    assert "negative" not in missing
+
+    prompt["3"]["inputs"]["negative_prompt"] = ["8", 0]
+    prompt["7"] = {"class_type": "String Literal", "inputs": {"string": ""}}
+    prompt["8"] = {"class_type": "ComfySwitchNode", "inputs": {
+        "switch": False, "on_false": ["7", 0], "on_true": ["9", 0],
+    }}
+    prompt["9"] = {"class_type": "PrimitiveStringMultiline", "inputs": {
+        "value": "inactive negative",
+    }}
+    data, missing = WorkflowExtractor(prompt).extract(save_node_id="6")
+    assert data["negative"] == ""
+    assert "negative" not in missing
+
+    prompt["3"]["inputs"]["negative_prompt"] = ["7", 0]
+    data, missing = WorkflowExtractor(prompt).extract(save_node_id="6")
+    assert data["negative"] == ""
+    assert "negative" not in missing
+
+
+def test_qwen_image_21_prompts_stay_separate_through_cfg_guider():
+    prompt = {
+        "1": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "prompt": "positive text", "negative_prompt": "negative text",
+        }},
+        "2": {"class_type": "CFGGuider", "inputs": {
+            "positive": ["1", 0], "negative": ["1", 1], "cfg": 1,
+        }},
+        "3": {"class_type": "SamplerCustomAdvanced", "inputs": {
+            "guider": ["2", 0], "noise": ["4", 0], "sigmas": ["5", 0],
+        }},
+        "4": {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}},
+        "5": {"class_type": "BasicScheduler", "inputs": {"steps": 25}},
+    }
+
+    data, missing = WorkflowExtractor(prompt).extract()
+
+    assert data["positive"] == "positive text"
+    assert data["negative"] == "negative text"
+    assert "positive" not in missing and "negative" not in missing
+
+
 def test_workflow_extractor_basic_prompt():
     prompt = {
         "1": {
