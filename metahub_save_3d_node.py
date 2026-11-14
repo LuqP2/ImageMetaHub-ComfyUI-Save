@@ -276,16 +276,60 @@ def _inject_glb_metadata(file_path: Path, metadata: Dict[str, Any]) -> bool:
         return False
 
 
-def _next_path(filename_prefix: str, extension: str) -> Tuple[Path, str]:
+def _next_path(filename_prefix: str, extension: str, reserved: set[Path]) -> Tuple[Path, str]:
     if folder_paths is None:
         raise RuntimeError("ComfyUI folder_paths is unavailable")
     output_root = folder_paths.get_output_directory()
     full_folder, filename, counter, subfolder, _prefix = folder_paths.get_save_image_path(filename_prefix, output_root)
     candidate = Path(full_folder) / f"{filename}_{counter:05}_.{extension}"
-    while candidate.exists():
+    while candidate in reserved or candidate.exists():
         counter += 1
         candidate = Path(full_folder) / f"{filename}_{counter:05}_.{extension}"
     return candidate, subfolder
+
+
+MAP_SUFFIXES = {"texture": "Texture", "normal": "Normal", "roughness": "Roughness", "metallic": "Metallic"}
+
+
+def _prepare_maps(inputs, model_count):
+    maps = []
+    suffixes = set()
+    for role, default in MAP_SUFFIXES.items():
+        value = inputs.get(f"{role}_map")
+        if value is None:
+            continue
+        suffix = inputs.get(f"{role}_suffix", default).strip()
+        if not suffix or suffix.endswith(".") or any(c in '<>:"/\\|?*' or ord(c) < 32 for c in suffix):
+            raise ValueError(f"Invalid {role} map suffix: {suffix!r}")
+        if suffix.casefold() in suffixes:
+            raise ValueError(f"Duplicate map suffix: {suffix}")
+        suffixes.add(suffix.casefold())
+        pixels = _tensor_numpy(value, np.float32)
+        if (pixels.ndim != 4 or pixels.shape[0] not in (1, model_count)
+                or min(pixels.shape[1:3]) == 0 or pixels.shape[3] not in (1, 3, 4)):
+            raise ValueError(f"{role} map requires one image or one image per model ({model_count})")
+        maps.append((role, suffix, pixels))
+    return maps
+
+
+def _write_maps(destinations, index, output_path, payload):
+    created = []
+    try:
+        for _, path, pixels in destinations:
+            image = np.clip(pixels[0 if len(pixels) == 1 else index] * 255, 0, 255).astype(np.uint8)
+            if image.shape[-1] == 1:
+                image = image[..., 0]
+            with path.open("xb") as stream:
+                created.append(path)
+                Image.fromarray(image).save(stream, "PNG")
+        if payload is not None:
+            _write_sidecar(output_path, payload)
+            if output_path.suffix == ".glb":
+                _inject_glb_metadata(output_path, payload)
+    except Exception:
+        for path in created:
+            path.unlink(missing_ok=True)
+        raise
 
 
 def _build_metadata(
@@ -393,6 +437,14 @@ class MetaHubSave3DModel:
                 "notes": ("STRING", {"default": "", "multiline": True}),
                 "project_name": ("STRING", {"default": ""}),
                 "generation_time_override": ("FLOAT", {"default": None, "forceInput": True}),
+                **{
+                    name: spec
+                    for role, suffix in MAP_SUFFIXES.items()
+                    for name, spec in (
+                        (f"{role}_map", ("IMAGE",)),
+                        (f"{role}_suffix", ("STRING", {"default": suffix})),
+                    )
+                },
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -418,6 +470,7 @@ class MetaHubSave3DModel:
         prompt: Any = None,
         extra_pnginfo: Any = None,
         unique_id: Any = None,
+        **map_inputs: Any,
     ) -> Dict[str, Any]:
         metadata = None if getattr(args, "disable_metadata", False) else _build_metadata(
             prompt,
@@ -432,28 +485,48 @@ class MetaHubSave3DModel:
         saved_paths: list[str] = []
         source_node_class = _source_node_class(prompt, unique_id)
 
-        if hasattr(model_3d, "save_to"):
+        file_model = hasattr(model_3d, "save_to")
+        if file_model:
             extension = str(getattr(model_3d, "format", "glb") or "glb").lower().lstrip(".")
             if extension not in SUPPORTED_FORMATS:
                 raise ValueError(f"Unsupported 3D format: {extension}")
-            output_path, subfolder = _next_path(filename_prefix, extension)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            model_3d.save_to(str(output_path))
-            model_info = {"format": extension, "sourceNodeClass": source_node_class or type(model_3d).__name__}
-            payload = dict(metadata or {})
-            payload["model_3d"] = model_info
-            if metadata:
-                if extension == "glb":
-                    _inject_glb_metadata(output_path, payload)
-                _write_sidecar(output_path, payload)
-            results.append({"filename": output_path.name, "subfolder": subfolder, "type": "output"})
-            saved_paths.append(str(output_path))
+            batch_size = 1
         elif hasattr(model_3d, "vertices") and hasattr(model_3d, "faces"):
+            extension = "glb"
             batch_size = int(model_3d.vertices.shape[0])
-            for index in range(batch_size):
+        else:
+            raise TypeError("MetaHub Save 3D Model expected a MESH or File3D value")
+
+        maps = _prepare_maps(map_inputs, batch_size)
+        reserved = set()
+        exports = []
+        existing_names_by_folder = {}
+        for _ in range(batch_size):
+            output_path, subfolder = _next_path(filename_prefix, extension, reserved)
+            reserved.add(output_path)
+            destinations = [
+                (role, output_path.with_name(f"{output_path.stem} {suffix}.png"), pixels)
+                for role, suffix, pixels in maps
+            ]
+            if destinations:
+                if output_path.parent not in existing_names_by_folder:
+                    existing_names_by_folder[output_path.parent] = {
+                        path.name.casefold() for path in output_path.parent.iterdir()
+                    } if output_path.parent.exists() else set()
+                existing_names = existing_names_by_folder[output_path.parent]
+                for _, path, _ in destinations:
+                    if path.name.casefold() in existing_names:
+                        raise FileExistsError(f"Texture map already exists: {path}")
+                    existing_names.add(path.name.casefold())
+            exports.append((output_path, subfolder, destinations))
+
+        for index, (output_path, subfolder, destinations) in enumerate(exports):
+            if file_model:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                model_3d.save_to(str(output_path))
+                model_info = {"format": extension}
+            else:
                 vertices, faces, colors, uvs, texture = _mesh_batch_item(model_3d, index)
-                output_path, subfolder = _next_path(filename_prefix, "glb")
-                payload = dict(metadata or {})
                 model_info = _write_glb(
                     output_path,
                     vertices,
@@ -464,15 +537,16 @@ class MetaHubSave3DModel:
                     texture=texture,
                     unlit=bool(getattr(model_3d, "unlit", False)),
                 )
-                payload["model_3d"] = model_info
-                model_info["sourceNodeClass"] = source_node_class or type(model_3d).__name__
-                if metadata:
-                    _inject_glb_metadata(output_path, payload)
-                    _write_sidecar(output_path, payload)
-                results.append({"filename": output_path.name, "subfolder": subfolder, "type": "output"})
-                saved_paths.append(str(output_path))
-        else:
-            raise TypeError("MetaHub Save 3D Model expected a MESH or File3D value")
+            model_info["sourceNodeClass"] = source_node_class or type(model_3d).__name__
+            if destinations:
+                model_info["textureMaps"] = [
+                    {"role": role, "filename": path.name} for role, path, _ in destinations
+                ]
+
+            payload = {**metadata, "model_3d": model_info} if metadata else None
+            _write_maps(destinations, index, output_path, payload)
+            results.append({"filename": output_path.name, "subfolder": subfolder, "type": "output"})
+            saved_paths.append(str(output_path))
 
         return {"ui": {"3d": results, "imagemetahub_files": saved_paths}}
 
