@@ -14,7 +14,7 @@ from xml.sax.saxutils import escape as xml_escape
 import numpy as np
 from PIL import Image, PngImagePlugin
 
-METAHUB_SAVE_NODE_VERSION = "1.2.2"
+METAHUB_SAVE_NODE_VERSION = "1.3.0"
 
 try:
     import piexif

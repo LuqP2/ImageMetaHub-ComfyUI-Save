@@ -3,6 +3,8 @@ import struct
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
+from PIL import Image
 
 import metahub_save_3d_node as node3d
 
@@ -74,6 +76,76 @@ def test_disable_metadata_writes_model_without_sidecar_or_extras(tmp_path, monke
     model_path = tmp_path / "3d" / result["ui"]["3d"][0]["filename"]
     assert not model_path.with_name(model_path.name + ".imagemetahub.json").exists()
     assert "extras" not in _read_glb_json(model_path)["asset"]
+
+
+def test_texture_maps_follow_numbered_models_and_batch_indices(tmp_path, monkeypatch):
+    monkeypatch.setattr(node3d, "folder_paths", FakeFolderPaths(tmp_path))
+    monkeypatch.setattr(node3d.args, "disable_metadata", False)
+    monkeypatch.setattr(node3d, "_build_metadata", lambda *args: {"media_type": "model3d"})
+    mesh = _mesh(with_optional_data=False)
+    mesh.vertices = np.repeat(mesh.vertices, 2, axis=0)
+    mesh.faces = np.repeat(mesh.faces, 2, axis=0)
+    result = node3d.MetaHubSave3DModel().save_model(
+        mesh, metallic_map=np.array([[[[0.0]]], [[[1.0]]]]), metallic_suffix="Metalness",
+        normal_map=np.ones((1, 2, 2, 3)),
+    )
+    for index, record in enumerate(result["ui"]["3d"]):
+        model = tmp_path / "3d" / record["filename"]
+        metallic = model.with_name(f"{model.stem} Metalness.png")
+        normal = model.with_name(f"{model.stem} Normal.png")
+        with Image.open(metallic) as image:
+            assert image.getpixel((0, 0)) == index * 255
+        with Image.open(normal) as image:
+            assert image.getpixel((0, 0)) == (255, 255, 255)
+        sidecar = json.loads(model.with_name(f"{model.name}.imagemetahub.json").read_text())
+        assert sidecar["model_3d"]["textureMaps"] == [
+            {"role": "normal", "filename": normal.name},
+            {"role": "metallic", "filename": metallic.name},
+        ]
+
+
+def test_invalid_maps_and_collisions_fail_before_writing_models(tmp_path, monkeypatch):
+    monkeypatch.setattr(node3d, "folder_paths", FakeFolderPaths(tmp_path))
+    monkeypatch.setattr(node3d.args, "disable_metadata", True)
+    saver = node3d.MetaHubSave3DModel()
+    pixels = np.ones((1, 2, 2, 3))
+    with pytest.raises(ValueError, match="one image"):
+        saver.save_model(_mesh(), normal_map=np.repeat(pixels, 2, axis=0))
+    with pytest.raises(ValueError, match="Invalid"):
+        saver.save_model(_mesh(), normal_map=pixels, normal_suffix="../Map")
+    with pytest.raises(ValueError, match="Duplicate"):
+        saver.save_model(_mesh(), normal_map=pixels, roughness_map=pixels, roughness_suffix="normal")
+    collision = tmp_path / "3d" / "ComfyUI_00001_ normal.png"
+    collision.parent.mkdir(exist_ok=True)
+    collision.write_bytes(b"existing")
+    with pytest.raises(FileExistsError):
+        saver.save_model(_mesh(), normal_map=pixels)
+    assert collision.read_bytes() == b"existing"
+    assert not list(collision.parent.glob("*.glb"))
+
+
+def test_maps_are_saved_without_metadata_and_removed_on_write_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(node3d, "folder_paths", FakeFolderPaths(tmp_path))
+    monkeypatch.setattr(node3d.args, "disable_metadata", True)
+    saver = node3d.MetaHubSave3DModel()
+    pixels = np.ones((1, 2, 2, 3))
+    save = Image.Image.save
+
+    def fail_roughness(image, stream, *args, **kwargs):
+        if hasattr(stream, "name") and "Roughness" in stream.name:
+            stream.write(b"partial")
+            raise OSError("synthetic write failure")
+        return save(image, stream, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Image.Image, "save", fail_roughness)
+        with pytest.raises(OSError, match="synthetic write failure"):
+            saver.save_model(_mesh(), normal_map=pixels, roughness_map=pixels)
+    folder = tmp_path / "3d"
+    assert not list(folder.glob("*.png"))
+    saver.save_model(_mesh(), normal_map=pixels)
+    assert len(list(folder.glob("* Normal.png"))) == 1
+    assert not list(folder.glob("*.imagemetahub.json"))
 
 
 def test_texture_without_usable_uvs_is_not_reported_as_embedded(tmp_path):
